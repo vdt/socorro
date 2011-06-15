@@ -1,0 +1,6 @@
+This directory is for the auto discovery middleware services.  Any file 
+with a name ending in the string "service.py” will be considered as a 
+source for a middleware service.  The auto discovery mechanism will 
+look into each of the aforementioned files for classes that have names 
+ending with “Service”.  The mechanism will attempt to load these 
+classes automatically as middleware services.
