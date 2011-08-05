@@ -1,18 +1,14 @@
 #! /usr/bin/env python
 
-import ConfigParser as cp
-import os.path
-import json
-
-import sys
 import logging
 import logging.handlers
 
 import socorro.lib.config_manager as cm
 import socorro.lib.logging_config as lc
-import socorro.lib.util as sutil
 
-def main(application_class):
+
+#------------------------------------------------------------------------------
+def main(application_class=None):
     if isinstance(application_class, str):
         application_class = cm.class_converter(application_class)
     try:
@@ -27,7 +23,6 @@ def main(application_class):
         application_doc = application_class.doc
     except AttributeError:
         application_doc = ''
-    application_main = application_class.main
 
     app_definition = cm.Namespace()
     app_definition.option('_application',
@@ -36,15 +31,15 @@ def main(application_class):
                           default=application_class,
                           from_string_converter=cm.class_converter
                          )
-    definition_list = [ app_definition,
-                        lc.required_config(application_name),
+    definition_list = [app_definition,
+                       lc.required_config(application_name),
                       ]
 
     config_manager = cm.ConfigurationManager(definition_list,
-                                        application_name=application_name,
-                                        application_version=application_version,
-                                        application_doc=application_doc,
-                                             )
+                                    application_name=application_name,
+                                    application_version=application_version,
+                                    application_doc=application_doc,
+                                            )
     config = config_manager.get_config()
 
     logger = logging.getLogger(config._application.app_name)
@@ -55,9 +50,14 @@ def main(application_class):
     config_manager.log_config(logger)
 
     try:
+        application_main = application_class.main
+    except AttributeError:
+        logger.critical("the application class has no main function")
+    else:
         application_main(config)
     finally:
         logger.info("done.")
 
+#==============================================================================
 if __name__ == '__main__':
     main()

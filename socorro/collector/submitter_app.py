@@ -115,8 +115,8 @@ def createLimitedFileSystemIterator (config,
 #-------------------------------------------------------------------------------
 def submitter (config):
     logger = config.logger
-    signal.signal(signal.SIGTERM, iwf.respondToSIGTERM)
-    signal.signal(signal.SIGHUP, iwf.respondToSIGTERM)
+    signal.signal(signal.SIGTERM, iwf.respond_to_SIGTERM)
+    signal.signal(signal.SIGHUP, iwf.respond_to_SIGTERM)
 
     statsPool = sutil.DotDict(
         { 'submittedCount': stats.CounterPool(config),
@@ -154,7 +154,7 @@ def submitter (config):
 
     try:
         submissionMill.start()
-        submissionMill.waitForCompletion(statsReportingWaitingFunc)
+        submissionMill.wait_for_completion(statsReportingWaitingFunc)
             # though, it only ends if someone
             # hits ^C or sends SIGHUP or SIGTERM
             # - any of which will get translated

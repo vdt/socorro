@@ -15,31 +15,37 @@ import re
 import socorro.lib.util as sutil
 import socorro.lib.datetimeutil as dtu
 
-#===============================================================================
+
+#==============================================================================
 class ConfigFileMissingError (IOError):
     pass
 
-#===============================================================================
+
+#==============================================================================
 class ConfigFileOptionNameMissingError (Exception):
     pass
 
-#===============================================================================
+
+#==============================================================================
 class NotAnOptionError (Exception):
     pass
-ConfigurationManagerNotAnOption = NotAnOptionError   # for legacy compatability
+ConfigurationManagerNotAnOption = NotAnOptionError  # for legacy compatability
 
-#===============================================================================
+
+#==============================================================================
 class OptionError (Exception):
-    def __init__(self, errorString):
-        super(OptionError, self).__init__(errorString)
+    def __init__(self, error_string):
+        super(OptionError, self).__init__(error_string)
 
-#===============================================================================
+
+#==============================================================================
 class CannotConvert (ValueError):
     pass
 
-#===============================================================================
+
+#==============================================================================
 class Option(object):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __init__(self,
                  name=None,
                  doc=None,
@@ -58,7 +64,7 @@ class Option(object):
             value = default
         self.set_value(value, from_string_converter)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def deduce_converter(self, from_string_converter=str):
         if from_string_converter in [str, None] and self.default != None:
             type_of_default = type(self.default)
@@ -70,7 +76,7 @@ class Option(object):
         else:
             self.from_string_converter = from_string_converter
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def set_value(self, val, from_string_converter=None):
         if not self.from_string_converter:
             self.deduce_converter(from_string_converter)
@@ -82,7 +88,8 @@ class Option(object):
                 self.value = val
         else:
             self.value = val
-    #---------------------------------------------------------------------------
+
+    #--------------------------------------------------------------------------
     @staticmethod
     def from_dict(a_dict):
         o = Option()
@@ -90,16 +97,18 @@ class Option(object):
             setattr(o, key, val)
         return o
 
-#===============================================================================
+
+#==============================================================================
 class Namespace(sutil.DotDict):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __init__(self, doc=''):
         super(Namespace, self).__init__()
-        object.__setattr__(self, '_doc', doc) # force into attributes
+        object.__setattr__(self, '_doc', doc)  # force into attributes
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __setattr__(self, name, value):
-        if type(value) in [int, float, str, unicode, dt.datetime, dt.timedelta]:
+        if type(value) in [int, float, str,
+                           unicode, dt.datetime, dt.timedelta]:
             o = Option(name=name, default=value, value=value)
         else:
             o = value
@@ -109,7 +118,7 @@ class Namespace(sutil.DotDict):
                                    'a %s has been detected' % type(value))
         self.__setitem__(name, o)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def option(self,
                name,
                doc=None,
@@ -123,11 +132,11 @@ class Namespace(sutil.DotDict):
                            short_form=short_form)
         self[name] = an_option
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def namespace(self, name, doc=''):
         self[name] = Namespace(doc=doc)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def set_value(self, name, value, strict=True):
         name_parts = name.split('.', 1)
         prefix = name_parts[0]
@@ -137,21 +146,22 @@ class Namespace(sutil.DotDict):
             if strict:
                 raise
             self[prefix] = candidate = Option()
-            condidate.name = prefix
+            candidate.name = prefix
         candidate_type = type(candidate)
         if candidate_type == Namespace:
             candidate.set_value(name_parts[1], value, strict)
         else:
             candidate.set_value(value)
 
-#===============================================================================
+
+#==============================================================================
 class OptionsByGetopt(object):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __init__(self, argv_source=sys.argv):
         self.argv_source = argv_source
 
-    #---------------------------------------------------------------------------
-    def get_values (self, config_manager, ignore_mismatches):
+    #--------------------------------------------------------------------------
+    def get_values(self, config_manager, ignore_mismatches):
         short_options_str, \
         long_options_list = self.getopt_create_opts(
                              config_manager.option_definitions)
@@ -174,8 +184,8 @@ class OptionsByGetopt(object):
                                             config_manager.option_definitions,
                                             '')
                 if not name:
-                    raise NotAnOptionError('%s is not a valid short form option'
-                                           % opt_name[1:])
+                    raise NotAnOptionError('%s is not a valid short '
+                                           'form option' % opt_name[1:])
             option = config_manager.get_option_by_name(name)
             if option.from_string_converter == boolean_converter:
                 command_line_values[name] = not option.default
@@ -183,8 +193,8 @@ class OptionsByGetopt(object):
                 command_line_values[name] = opt_val
         return command_line_values
 
-    #---------------------------------------------------------------------------
-    def getopt_create_opts (self, option_definitions):
+    #--------------------------------------------------------------------------
+    def getopt_create_opts(self, option_definitions):
         short_options_list = []
         long_options_list = []
         self.getopt_create_opts_recursive(option_definitions,
@@ -194,11 +204,11 @@ class OptionsByGetopt(object):
         short_options_str = ''.join(short_options_list)
         return short_options_str, long_options_list
 
-    #---------------------------------------------------------------------------
-    def getopt_create_opts_recursive (self, source,
-                                      prefix,
-                                      short_options_list,
-                                      long_options_list):
+    #--------------------------------------------------------------------------
+    def getopt_create_opts_recursive(self, source,
+                                     prefix,
+                                     short_options_list,
+                                     long_options_list):
         for key, val in source.items():
             if type(val) == Option:
                 boolean_option = type(val.default) == bool
@@ -217,14 +227,14 @@ class OptionsByGetopt(object):
                     long_options_list.append('%s%s' % (prefix, val.name))
                 else:
                     long_options_list.append('%s%s=' % (prefix, val.name))
-            else: #Namespace case
+            else:  # Namespace case
                 new_prefix = '%s%s.' % (prefix, key)
                 self.getopt_create_opts_recursive(val,
                                                   new_prefix,
                                                   short_options_list,
                                                   long_options_list)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     @staticmethod
     def getopt_with_ignore(args, shortopts, longopts=[]):
         """my_getopt(args, options[, long_options]) -> opts, args
@@ -261,8 +271,8 @@ class OptionsByGetopt(object):
                 args = args[1:]
         return opts, prog_args
 
-    #---------------------------------------------------------------------------
-    def find_name_with_short_form (self, short_name, source, prefix):
+    #--------------------------------------------------------------------------
+    def find_name_with_short_form(self, short_name, source, prefix):
         for key, val in source.items():
             type_of_val = type(val)
             if type_of_val == Namespace:
@@ -278,9 +288,10 @@ class OptionsByGetopt(object):
                     continue
         return None
 
-#===============================================================================
+
+#==============================================================================
 class OptionsByConfFile(object):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __init__(self, filename, open=open):
         self.filename = filename
         self.values = {}
@@ -294,8 +305,10 @@ class OptionsByConfFile(object):
                                             (self.values[previous_key], l)
                         continue
                     l = l.strip()
-                    if not l: continue
-                    if l[0] in '#': continue
+                    if not l:
+                        continue
+                    if l[0] in '#':
+                        continue
                     try:
                         parts = l.split("=", 1)
                         key, value = parts
@@ -306,24 +319,25 @@ class OptionsByConfFile(object):
         except IOError:
             pass
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def get_values(self, config_manager, ignore_mismatches):
         return self.values
 
-#===============================================================================
+
+#==============================================================================
 class OptionsByIniFile(object):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def __init__(self, source,
                  top_level_section_name='top_level'):
         if isinstance(source, str):
             parser = cp.RawConfigParser()
             parser.read(source)
             self.configparser = parser
-        else: # a real config parser was loaded
+        else:  # a real config parser was loaded
             self.configparser = source
         self.top_level_section_name = top_level_section_name
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def get_values(self, config_manager, ignore_mismatches):
         sections_list = self.configparser.sections()
         options = {}
@@ -339,9 +353,10 @@ class OptionsByIniFile(object):
                     options[name] = True
         return options
 
-#===============================================================================
+
+#==============================================================================
 class RequiredConfig(object):
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     @classmethod
     def get_required_config(cls):
         result = {}
@@ -351,28 +366,30 @@ class RequiredConfig(object):
             except AttributeError:
                 pass
         return result
-    #---------------------------------------------------------------------------
+
+    #--------------------------------------------------------------------------
     def config_assert(self, config):
         for a_parameter in self.required_config.keys():
-            assert a_parameter in config, '%s missing from config' % a_parameter
+            assert a_parameter in config, \
+                   '%s missing from config' % a_parameter
 
 
-#===============================================================================
+#==============================================================================
 class ConfigurationManager(object):
 
-    #---------------------------------------------------------------------------
-    def __init__ (self,
-                  definition_source_list=[],
-                  settings_source_list=[],
-                  argv_source=sys.argv[1:],
-                  use_config_files=True,
-                  auto_help=True,
-                  manager_controls=True,
-                  quit_after_admin=True,
-                  application_name='',
-                  application_version='',
-                  application_doc=''
-                  ):
+    #--------------------------------------------------------------------------
+    def __init__(self,
+                 definition_source_list=[],
+                 settings_source_list=[],
+                 argv_source=sys.argv[1:],
+                 use_config_files=True,
+                 auto_help=True,
+                 manager_controls=True,
+                 quit_after_admin=True,
+                 application_name='',
+                 application_version='',
+                 application_doc=''
+                 ):
 
         self.option_definitions = Namespace()
         self.definition_source_list = definition_source_list
@@ -395,7 +412,7 @@ class ConfigurationManager(object):
         self.application_doc = application_doc
         self.manager_controls_list = ['help', '_write', 'config_path',
                                       '_application']
-        self.options_barred_from_help = [ '_application' ]
+        self.options_barred_from_help = ['_application']
 
         if self.auto_help:
             self.setup_auto_help()
@@ -412,10 +429,10 @@ class ConfigurationManager(object):
         if self.use_config_files and not self.custom_settings_source:
             self.read_config_files()
             # second pass to include config file values - ignore bad options
-            self.settings_source_list = [ self.ini_source,
-                                          self.conf_source,
-                                          self.json_source,
-                                          command_line_options
+            self.settings_source_list = [self.ini_source,
+                                         self.conf_source,
+                                         self.json_source,
+                                         command_line_options
                                         ]
             self.overlay_settings(ignore_mismatches=True)
 
@@ -441,8 +458,8 @@ class ConfigurationManager(object):
         if quit_after_admin and self.admin_tasks_done:
             exit()
 
-    #---------------------------------------------------------------------------
-    def read_config_files (self):
+    #--------------------------------------------------------------------------
+    def read_config_files(self):
     # try ini file
         path = self.get_option_by_name('config_path').value
         file_name = os.path.join(path, '%s.ini' % self.application_name)
@@ -458,16 +475,16 @@ class ConfigurationManager(object):
         except IOError:
             self.json_source = {}
 
-
-    #---------------------------------------------------------------------------
-    def walk_expanding_class_options (self, source=None):
+    #--------------------------------------------------------------------------
+    def walk_expanding_class_options(self, source=None):
         if source is None:
             source = self.option_definitions
         expanded_keys = []
         expansions_were_done = True
         while expansions_were_done:
             expansions_were_done = False
-            for key, val in source.items(): # not iteritems, we're changing the dict
+            # can't use iteritems in loop, we're changing the dict
+            for key, val in source.items():
                 if isinstance(val, Namespace):
                     self.walk_expanding_class_options(val)
                 elif (key not in expanded_keys and
@@ -476,24 +493,26 @@ class ConfigurationManager(object):
                     expanded_keys.append(key)
                     expansions_were_done = True
                     try:
-                        for o_key, o_val in val.value.get_required_config().iteritems():
+                        for o_key, o_val in \
+                                val.value.get_required_config().iteritems():
                             source.__setattr__(o_key, o_val)
                     except AttributeError:
-                        pass # there are no required_options for this class
+                        pass  # there are no required_options for this class
                 else:
-                    pass # don't need to touch other types of Options
+                    pass  # don't need to touch other types of Options
             self.overlay_settings(ignore_mismatches=True)
 
-    #---------------------------------------------------------------------------
-    def setup_auto_help (self):
+    #--------------------------------------------------------------------------
+    def setup_auto_help(self):
         help_option = Option(name='help', doc='print this', default=False)
         self.definition_source_list.append({'help': help_option})
 
-    #---------------------------------------------------------------------------
-    def setup_manager_controls (self):
+    #--------------------------------------------------------------------------
+    def setup_manager_controls(self):
         manager_options = Namespace()
         manager_options._write = Option(name='_write',
-                                        doc='write config file to stdout (conf, ini, json)',
+                                        doc='write config file to stdout '
+                                            '(conf, ini, json)',
                                         default=None,
                                         )
         #manager_options._quit = Option(name='_quit',
@@ -505,33 +524,34 @@ class ConfigurationManager(object):
                                                  default='./')
         self.definition_source_list.append(manager_options)
 
-    #---------------------------------------------------------------------------
-    def setup_definitions (self, source):
+    #--------------------------------------------------------------------------
+    def setup_definitions(self, source):
         if isinstance(source, coll.Mapping):
-            self.setup_definitions_for_mappings(source, self.option_definitions)
+            self.setup_definitions_for_mappings(source,
+                                                self.option_definitions)
             return
         source_type = type(source)
-        if source_type == type(coll): # how do you get the Module type?
+        if source_type == type(coll):  # how do you get the Module type?
             module_dict = source.__dict__.copy()
             del module_dict['__builtins__']
             self.setup_definitions_for_mappings(module_dict,
                                                 self.option_definitions)
         elif source_type == list:
-            self.setup_definitions_for_tuple_list (source,
-                                                   self.option_definitions)
-        elif source_type == str: # it must be json
+            self.setup_definitions_for_tuple_list(source,
+                                                  self.option_definitions)
+        elif source_type == str:  # it must be json
             import json
-            self.setup_definitions_for_mappings (json.loads(source),
-                                                 self.option_definitions)
+            self.setup_definitions_for_mappings(json.loads(source),
+                                                self.option_definitions)
         else:
             pass
 
-    #---------------------------------------------------------------------------
-    def setup_definitions_for_mappings (self, source, destination):
+    #--------------------------------------------------------------------------
+    def setup_definitions_for_mappings(self, source, destination):
         try:
             for key, val in source.items():
                 if key.startswith('__'):
-                    continue  #ignore these
+                    continue  # ignore these
                 val_type = type(val)
                 if val_type == Option:
                     destination[key] = val
@@ -561,8 +581,8 @@ class ConfigurationManager(object):
         except AttributeError:
             pass
 
-    #---------------------------------------------------------------------------
-    def setup_definitions_for_tuple_list (self, source, destination):
+    #--------------------------------------------------------------------------
+    def setup_definitions_for_tuple_list(self, source, destination):
         for option in source:
             short_form,  long_form, parameters, default, doc = option[:5]
             converter = None
@@ -602,20 +622,20 @@ class ConfigurationManager(object):
                 o.combo = combo
             a_namespace[o.name] = o
 
-    #---------------------------------------------------------------------------
-    def overlay_settings (self, ignore_mismatches=True):
+    #--------------------------------------------------------------------------
+    def overlay_settings(self, ignore_mismatches=True):
         for a_settings_source in self.settings_source_list:
             if isinstance(a_settings_source, coll.Mapping):
                 self.overlay_config_recurse(a_settings_source,
                                             ignore_mismatches=True)
             else:
                 options = a_settings_source.get_values(self,
-                                            ignore_mismatches=ignore_mismatches)
+                                        ignore_mismatches=ignore_mismatches)
                 self.overlay_config_recurse(options,
-                                            ignore_mismatches=ignore_mismatches)
+                                        ignore_mismatches=ignore_mismatches)
 
-    #---------------------------------------------------------------------------
-    def overlay_config_recurse (self, source, destination=None, prefix='',
+    #--------------------------------------------------------------------------
+    def overlay_config_recurse(self, source, destination=None, prefix='',
                                 ignore_mismatches=True):
         if destination is None:
             destination = self.option_definitions
@@ -639,8 +659,8 @@ class ConfigurationManager(object):
             else:
                 sub_destination.set_value(val)
 
-    #---------------------------------------------------------------------------
-    def walk_config_copy_values (self, source, destination):
+    #--------------------------------------------------------------------------
+    def walk_config_copy_values(self, source, destination):
         for key, val in source.items():
             value_type = type(val)
             if value_type == Option:
@@ -649,7 +669,7 @@ class ConfigurationManager(object):
                 destination[key] = d = sutil.DotDict()
                 self.walk_config_copy_values(val, d)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     @staticmethod
     def option_sort(x_tuple):
         key, val = x_tuple
@@ -657,8 +677,9 @@ class ConfigurationManager(object):
             return 'zzzzzzzzzzz%s' % key
         else:
             return key
-    #---------------------------------------------------------------------------
-    def walk_config (self, source=None, prefix=''):
+
+    #--------------------------------------------------------------------------
+    def walk_config(self, source=None, prefix=''):
         if source == None:
             source = self.option_definitions
         options_list = source.items()
@@ -674,17 +695,17 @@ class ConfigurationManager(object):
                 for xqkey, xkey, xval in self.walk_config(val, new_prefix):
                     yield xqkey, xkey, xval
 
-    #---------------------------------------------------------------------------
-    def get_config (self):
+    #--------------------------------------------------------------------------
+    def get_config(self):
         config = sutil.DotDict()
         self.walk_config_copy_values(self.option_definitions, config)
         return config
 
     #get definition from classes in defaults
 
-    #---------------------------------------------------------------------------
-    def get_option_by_name (self, name):
-        source =  self.option_definitions
+    #--------------------------------------------------------------------------
+    def get_option_by_name(self, name):
+        source = self.option_definitions
         for sub_name in name.split('.'):
             candidate = source[sub_name]
             if isinstance(candidate, Option):
@@ -693,8 +714,8 @@ class ConfigurationManager(object):
                 source = candidate
         raise NotAnOptionError('%s is not a known option name' % name)
 
-    #---------------------------------------------------------------------------
-    def get_option_names (self, source=None, names=None, prefix=''):
+    #--------------------------------------------------------------------------
+    def get_option_names(self, source=None, names=None, prefix=''):
         if not source:
             source = self.option_definitions
         if names is None:
@@ -704,11 +725,11 @@ class ConfigurationManager(object):
                 new_prefix = '%s%s.' % (prefix, key)
                 self.get_option_names(val, names, new_prefix)
             else:
-                names.append ("%s%s" % (prefix, key))
+                names.append("%s%s" % (prefix, key))
         return names
 
-    #---------------------------------------------------------------------------
-    def get_options (self, source=None, options=None, prefix=''):
+    #--------------------------------------------------------------------------
+    def get_options(self, source=None, options=None, prefix=''):
         if not source:
             source = self.option_definitions
         if options is None:
@@ -718,17 +739,18 @@ class ConfigurationManager(object):
                 new_prefix = '%s%s.' % (prefix, key)
                 self.get_options(val, options, new_prefix)
             else:
-                options.append (("%s%s" % (prefix, key), val))
+                options.append(("%s%s" % (prefix, key), val))
         return options
 
-    #---------------------------------------------------------------------------
-    def output_summary (self,
-                        output_stream=sys.stdout,
-                        output_template="--{name}\n\t\t{doc} (default: {default})",
-                        bool_output_template="--{name}\n\t\t{doc}",
-                        short_form_template="\t-{short_form}, ",
-                        no_short_form_template="\t    ",
-                        block_password=True):
+    #--------------------------------------------------------------------------
+    def output_summary(self,
+                       output_stream=sys.stdout,
+                       output_template="--{name}\n\t\t{doc} (default: "
+                                       "{default})",
+                       bool_output_template="--{name}\n\t\t{doc}",
+                       short_form_template="\t-{short_form}, ",
+                       no_short_form_template="\t    ",
+                       block_password=True):
         """outputs the list of acceptable commands.  This is useful as the
         output of the 'help' option or usage.
 
@@ -772,15 +794,16 @@ class ConfigurationManager(object):
             # we want to show the user what the values will be if they
             # make no further action
             try:
-                output_parameters['default'] = \
-                    to_string_converters[type(output_parameters['value'])] \
-                                        (output_parameters['value'])
+                value = output_parameters['value']
+                type_of_value = type(value)
+                converter_function = to_string_converters[type_of_value]
+                output_parameters['default'] = converter_function(value)
             except KeyError:
                 output_parameters['default'] = output_parameters['value']
             print >>output_stream, template.format(**output_parameters)
 
-    #---------------------------------------------------------------------------
-    def write_config (self):
+    #--------------------------------------------------------------------------
+    def write_config(self):
         config_file_type = self.get_option_by_name('_write').value
         if config_file_type not in ('conf', 'ini', 'json'):
             raise Exception('unknown config file type')
@@ -791,14 +814,14 @@ class ConfigurationManager(object):
             if config_file_type == 'conf':
                 self.write_conf(output_stream=f,
                                 block_password=False)
-            elif config_file_type  == 'ini':
+            elif config_file_type == 'ini':
                 self.write_ini(output_stream=f,
                                block_password=False)
             elif config_file_type == 'json':
                 self.write_json(output_stream=f,
                                 block_password=False)
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def option_value_str(self, an_option):
         if an_option.value is None:
             return ''
@@ -813,11 +836,11 @@ class ConfigurationManager(object):
             s = "'''%s'''" % s
         return s
 
-    #---------------------------------------------------------------------------
-    def write_conf (self,
-                    output_stream=sys.stdout,
-                    block_password=True,
-                    comments=True):
+    #--------------------------------------------------------------------------
+    def write_conf(self,
+                   output_stream=sys.stdout,
+                   block_password=True,
+                   comments=True):
         for qkey, key, val in self.walk_config(self.option_definitions):
             if qkey in self.manager_controls_list:
                 continue
@@ -833,13 +856,13 @@ class ConfigurationManager(object):
                     val_str = self.option_value_str(val)
                     print >>output_stream, '%s=%s\n' % (qkey, val_str)
             else:
-                print >>output_stream, '#%s' % ('-'*79)
+                print >>output_stream, '#%s' % ('-' * 79)
                 print >>output_stream, '# %s - %s\n' % (key, val._doc)
 
-    #---------------------------------------------------------------------------
-    def write_ini (self,
-                   output_stream=sys.stdout,
-                   block_password=True):
+    #--------------------------------------------------------------------------
+    def write_ini(self,
+                  output_stream=sys.stdout,
+                  block_password=True):
         print >>output_stream, '[top_level]'
         for qkey, key, val in self.walk_config(self.option_definitions):
             if qkey in self.manager_controls_list:
@@ -858,8 +881,8 @@ class ConfigurationManager(object):
                     val_str = self.option_value_str(val)
                     print >>output_stream, '%s=%s\n' % (key, val_str)
 
-    #---------------------------------------------------------------------------
-    def str_safe_option_definitions (self, source=None, destination=None):
+    #--------------------------------------------------------------------------
+    def str_safe_option_definitions(self, source=None, destination=None):
         """ creats a string only dictionary of the option definitions"""
         if source is None:
             source = self.option_definitions
@@ -870,7 +893,7 @@ class ConfigurationManager(object):
                 if key in self.manager_controls_list:
                     continue
                 if key.startswith('__'):
-                    continue  #ignore these
+                    continue  # ignore these
                 val_type = type(val)
                 if val_type == Option:
                     destination[key] = d = sutil.DotDict(val.__dict__.copy())
@@ -891,16 +914,16 @@ class ConfigurationManager(object):
             pass
         return destination
 
-    #---------------------------------------------------------------------------
-    def write_json (self,
-                    output_stream=sys.stdout,
-                    block_password=True):
+    #--------------------------------------------------------------------------
+    def write_json(self,
+                   output_stream=sys.stdout,
+                   block_password=True):
         json_dict = self.str_safe_option_definitions()
         json_str = json.dumps(json_dict)
         print >>output_stream, json_str
 
-    #---------------------------------------------------------------------------
-    def log_config (self, logger):
+    #--------------------------------------------------------------------------
+    def log_config(self, logger):
         logger.info("app_name: %s", self.application_name)
         logger.info("app version: %s", self.application_version)
         logger.info("current configuration:")
@@ -919,7 +942,8 @@ class ConfigurationManager(object):
                 except KeyError:
                     logger.info('%s: %s', key, val)
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def io_converter(input_str):
     """ a conversion function for to select stdout, stderr or open a file for
     writing"""
@@ -932,7 +956,8 @@ def io_converter(input_str):
         return open(input_str, "w")
     return input_str
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def datetime_converter(input_str):
     """ a conversion function for datetimes
     """
@@ -955,13 +980,14 @@ def datetime_converter(input_str):
     except Exception:
         return dt.datetime.now()
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def timedelta_converter(input_str):
     """ a conversion function for time deltas
     """
     try:
         if type(input_str) is str:
-            days,hours,minutes,seconds = 0,0,0,0
+            days, hours, minutes, seconds = 0, 0, 0, 0
             details = input_str.split(':')
             if len(details) >= 4:
                 days = int(details[-4])
@@ -979,7 +1005,8 @@ def timedelta_converter(input_str):
         pass
     return input_str
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def boolean_converter(input_str):
     """ a conversion function for boolean
     """
@@ -987,7 +1014,8 @@ def boolean_converter(input_str):
         return input_str.lower() in ("true", "t", "1")
     return input_str
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def class_converter(input_str):
     """ a conversion that will import a module and class name
     """
@@ -1008,26 +1036,29 @@ def class_converter(input_str):
         obj = getattr(obj, name)
     return obj
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def eval_to_regex_converter(input_str):
     regex_as_str = eval(input_str)
     return re.compile(regex_as_str)
 
 compiled_regexp_type = type(re.compile(r'x'))
-#-------------------------------------------------------------------------------
-from_string_converters = { int: int,
-                           float: float,
-                           str: str,
-                           unicode: unicode,
-                           bool: boolean_converter,
-                           dt.datetime: datetime_converter,
-                           dt.timedelta: timedelta_converter,
-                           type: class_converter,
-                           types.FunctionType: class_converter,
-                           compiled_regexp_type: eval_to_regex_converter,
-                           }
 
-#-------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+from_string_converters = {int: int,
+                          float: float,
+                          str: str,
+                          unicode: unicode,
+                          bool: boolean_converter,
+                          dt.datetime: datetime_converter,
+                          dt.timedelta: timedelta_converter,
+                          type: class_converter,
+                          types.FunctionType: class_converter,
+                          compiled_regexp_type: eval_to_regex_converter,
+                          }
+
+
+#------------------------------------------------------------------------------
 def classes_and_functions_to_str(a_thing):
     if a_thing is None:
         return ''
@@ -1037,23 +1068,26 @@ def classes_and_functions_to_str(a_thing):
         return a_thing.__name__
     return "%s.%s" % (a_thing.__module__, a_thing.__name__)
 
-#-------------------------------------------------------------------------------
-to_string_converters = { int: str,
-                         float: str,
-                         str: str,
-                         unicode: unicode,
-                         bool: lambda x: 'True' if x else 'False',
-                         dt.datetime: dtu.datetimeToISOdateString,
-                         dt.timedelta: dtu.timedeltaToStr,
-                         type: classes_and_functions_to_str,
-                         types.FunctionType: classes_and_functions_to_str,
-                         compiled_regexp_type: lambda x: x.pattern,
-                         }
 
-#-------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+to_string_converters = {int: str,
+                        float: str,
+                        str: str,
+                        unicode: unicode,
+                        bool: lambda x: 'True' if x else 'False',
+                        dt.datetime: dtu.datetimeToISOdateString,
+                        dt.timedelta: dtu.timedeltaToStr,
+                        type: classes_and_functions_to_str,
+                        types.FunctionType: classes_and_functions_to_str,
+                        compiled_regexp_type: lambda x: x.pattern,
+                        }
+
+
+#------------------------------------------------------------------------------
 converters_requiring_quotes = [eval, eval_to_regex_converter]
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def new_configuration(configurationModule=None,
                       applicationName=None,
                      ):
@@ -1065,8 +1099,6 @@ def new_configuration(configurationModule=None,
                                           application_name=applicationName)
     return config_manager.get_config()
 
-#===============================================================================
+#==============================================================================
 if __name__ == "__main__":
     pass
-
-

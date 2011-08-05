@@ -79,7 +79,7 @@ def getProcessingDates_org(configContext, tableName, productVersionRestriction, 
       startDate = latestWindowEnd
       deltaDate = endDate - startDate
       assert deltaDate > delta0, 'inconsistent (after check with db table %s): deltaDate %s <= 0'%(tableName,deltaDate)
-    return (startDate,,endDate)
+    return (startDate,deltaDate,endDate)
   except:
     lib_util.reportExceptionAndAbort(logger)
 

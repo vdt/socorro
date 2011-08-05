@@ -20,8 +20,8 @@ def move (conf,
                                                         sourceCrashStorageClass)
     crashStoragePoolForDest = cstore.CrashStoragePool(conf,
                                                       destCrashStorageClass)
-    signal.signal(signal.SIGTERM, iwf.respondToSIGTERM)
-    signal.signal(signal.SIGHUP, iwf.respondToSIGTERM)
+    signal.signal(signal.SIGTERM, iwf.respond_to_SIGTERM)
+    signal.signal(signal.SIGHUP, iwf.respond_to_SIGTERM)
 
     #---------------------------------------------------------------------------
     def theIterator():
@@ -85,7 +85,7 @@ def move (conf,
 
     try:
         submissionMill.start()
-        submissionMill.waitForCompletion() # though, it only ends if someone
+        submissionMill.wait_for_completion() # though, it only ends if someone
                                            # hits ^C or sends SIGHUP or SIGTERM
                                            # - any of which will get translated
                                            # into a KeyboardInterrupt exception

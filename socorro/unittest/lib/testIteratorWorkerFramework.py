@@ -15,11 +15,11 @@ def testConstuctor1 ():
         assert iwf.config == config
         assert iwf.name == 'Wilma'
         assert iwf.logger == logger
-        assert iwf.taskFunc == siwf.defaultTaskFunc
+        assert iwf.task_func == siwf.default_task_func
         assert iwf.quit == False
     finally:
         # we got threads to join
-        iwf.workerPool.waitForCompletion()
+        iwf.worker_pool.waitForCompletion()
 
 def testStart1 ():
     logger = sutil.SilentFakeLogger()
@@ -32,14 +32,14 @@ def testStart1 ():
     try:
         iwf.start()
         time.sleep(2.0)
-        assert iwf.queuingThread.isAlive(), "the queing thread is not running"
-        assert len(iwf.workerPool.threadList) == 1, "where's the worker thread?"
-        assert iwf.workerPool.threadList[0].isAlive(), "the worker thread is stillborn"
+        assert iwf.queuing_thread.isAlive(), "the queing thread is not running"
+        assert len(iwf.worker_pool.threadList) == 1, "where's the worker thread?"
+        assert iwf.worker_pool.threadList[0].isAlive(), "the worker thread is stillborn"
         iwf.stop()
-        assert iwf.queuingThread.isAlive() == False, "the queuing thread did not stop"
+        assert iwf.queuing_thread.isAlive() == False, "the queuing thread did not stop"
     except Exception:
         # we got threads to join
-        iwf.workerPool.waitForCompletion()
+        iwf.worker_pool.waitForCompletion()
 
 def testDoingWorkWithOneWorker():
     logger = sutil.SilentFakeLogger()
@@ -62,7 +62,7 @@ def testDoingWorkWithOneWorker():
         iwf.stop()
     except Exception:
         # we got threads to join
-        iwf.workerPool.waitForCompletion()
+        iwf.worker_pool.waitForCompletion()
         raise
 
 
@@ -82,11 +82,11 @@ def testDoingWorkWithTwoWorkers():
     try:
         iwf.start()
         time.sleep(2.0)
-        assert len(iwf.workerPool.threadList) == 2, "expected 2 threads, but found %d" % len(iwf.workerPool.threadList)
+        assert len(iwf.worker_pool.threadList) == 2, "expected 2 threads, but found %d" % len(iwf.worker_pool.threadList)
         assert len(myList) == 10, 'expected to do 10 inserts, but %d were done instead' % len(myList)
         assert sorted(myList) == range(10), 'expected %s, but got %s' % (range(10), sorted(myList))
         iwf.stop()
     except Exception:
         # we got threads to join
-        iwf.workerPool.waitForCompletion()
+        iwf.worker_pool.waitForCompletion()
         raise

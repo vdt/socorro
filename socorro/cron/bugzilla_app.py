@@ -126,7 +126,7 @@ def save_last_run_date(config, now_function=dt.datetime.now):
         finally:
             f.close()
     except IOError:
-        reportExceptionAndContinue(logger)
+        util.reportExceptionAndContinue(logger)
 
 #-------------------------------------------------------------------------------
 def record_associations(config):

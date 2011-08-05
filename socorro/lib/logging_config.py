@@ -2,10 +2,11 @@ import socorro.lib.config_manager as cm
 
 import logging
 
-#===============================================================================
+#==============================================================================
 # logging routines
 
-def required_config (application_name=''):
+
+def required_config(application_name=''):
     lc = cm.Namespace()
     lc.option('syslogHost',
               doc='syslog hostname',
@@ -27,15 +28,17 @@ def required_config (application_name=''):
               default=40)
     lc.option('stderrLineFormatString',
               doc='python logging system format for logging to stderr',
-              default ='%(asctime)s %(levelname)s - %(threadName)s - '
-                       '%(message)s')
+              default='%(asctime)s %(levelname)s - %(threadName)s - '
+                      '%(message)s')
     lc.option('stderrErrorLoggingLevel',
               doc='logging level for the logging to stderr (10 - '
-                  'DEBUG, 20 - INFO, 30 - WARNING, 40 - ERROR, 50 - CRITICAL)',
+                  'DEBUG, 20 - INFO, 30 - WARNING, 40 - ERROR, '
+                  '50 - CRITICAL)',
               default=10)
     return lc
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def setupLoggingHandlers(logger, config):
     stderrLog = logging.StreamHandler()
     stderrLog.setLevel(config.stderrErrorLoggingLevel)
@@ -43,8 +46,8 @@ def setupLoggingHandlers(logger, config):
     stderrLog.setFormatter(stderrLogFormatter)
     logger.addHandler(stderrLog)
 
-    syslog = logging.handlers.SysLogHandler(facility=
-                                            config.syslogFacilityString)
+    syslog = logging.handlers.SysLogHandler(
+                                    facility=config.syslogFacilityString)
     syslog.setLevel(config.syslogErrorLoggingLevel)
     syslogFormatter = logging.Formatter(config.syslogLineFormatString)
     syslog.setFormatter(syslogFormatter)
