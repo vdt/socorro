@@ -12,7 +12,6 @@ def main(application_class=None):
     if isinstance(application_class, str):
         application_class = cm.class_converter(application_class)
     try:
-        print application_class
         application_name = application_class.app_name
     except AttributeError:
         application_name = 'socorro_unknown_app'
