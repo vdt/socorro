@@ -182,6 +182,6 @@ def get_required_config():
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
-    import socorro.app.genericApp as gapp
+    import socorro.app.generic_app as gapp
     import sys
     gapp.main(sys.modules[__name__])
