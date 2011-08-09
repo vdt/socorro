@@ -12,9 +12,10 @@ def main(application_class=None):
     if isinstance(application_class, str):
         application_class = cm.class_converter(application_class)
     try:
+        print application_class
         application_name = application_class.app_name
     except AttributeError:
-        application_name = 'Socorro Unknown App'
+        application_name = 'socorro_unknown_app'
     try:
         application_version = application_class.version
     except AttributeError:
@@ -35,10 +36,16 @@ def main(application_class=None):
                        lc.required_config(application_name),
                       ]
 
-    config_manager = cm.ConfigurationManager(definition_list)
+    config_manager = cm.ConfigurationManager(definition_list,
+                                             options_banned_from_help=[])
     config = config_manager.get_config()
 
-    logger = logging.getLogger(config._application.app_name)
+    try:
+        app_name = config._application.app_name
+    except AttributeError:
+        app_name = 'unknown_app'
+
+    logger = logging.getLogger(app_name)
     logger.setLevel(logging.DEBUG)
     lc.setupLoggingHandlers(logger, config)
     config.logger = logger

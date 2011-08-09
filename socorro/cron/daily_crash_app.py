@@ -151,29 +151,36 @@ def record_crash_stats(config, logger):
   finally:
     databaseConnection.close()
 
-#-------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 def main(config):
     record_crash_stats(config, config.logger)
 
-#===============================================================================
+
+#==============================================================================
 # any routine that uses this module and the ConfigurationManager should have
 # these options defined:
 import socorro.lib.config_manager as cm
-#-------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 app_name = 'daily_crash'
-version = '1.0'
-doc = """this is a cron"""
-#-------------------------------------------------------------------------------
+app_version = '1.0'
+app_doc = """this is a happy joyful cron"""
+#------------------------------------------------------------------------------
 socorroTimeToUTCInterval = cm.Option('socorroTimeToUTCInterval',
-                                     'number of hours socorro db is offset from UTC (and ADU data)',
+                                     'number of hours socorro db is offset '
+                                     'from UTC (and ADU data)',
                                      default = '8 hours')
-#-------------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
 def get_required_config():
     n = cm.Namespace()
     n.socorroTimeToUTCInterval = socorroTimeToUTCInterval
     n.update(sdb.get_required_config())
     return n
-#-------------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
 if __name__ == '__main__':
     import socorro.app.genericApp as gapp
     import sys

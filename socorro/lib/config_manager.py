@@ -427,8 +427,7 @@ class ConfigurationManager(object):
             self.settings_source_list = [self.ini_source,
                                          self.conf_source,
                                          self.json_source,
-                                         command_line_options
-                                        ]
+                                         command_line_options]
             self.overlay_settings(ignore_mismatches=True)
 
         # walk tree expanding class options
@@ -766,16 +765,19 @@ class ConfigurationManager(object):
           outputTemplatePrefixForNo: a string template for the first part of a
           listing where there is no single letter form of the command
         """
-        app = self.get_option_by_name('_application')
         try:
-            print >> output_stream, "%s %s" % (app.value.app_name,
-                                               app.value.app_version)
-        except AttributeError, x:
-            pass
-        try:
-            print >> output_stream, app.value.app_doc
-        except AttributeError:
-            pass
+            app = self.get_option_by_name('_application')
+            try:
+                print >> output_stream, "%s %s" % (app.value.app_name,
+                                                   app.value.app_version)
+            except AttributeError, x:
+                pass
+            try:
+                print >> output_stream, app.value.app_doc
+            except AttributeError:
+                pass
+        except KeyError:
+            pass  # there is no _application class
         names_list = self.get_option_names()
         names_list.sort()
         for x in names_list:
@@ -816,9 +818,14 @@ class ConfigurationManager(object):
         config_file_type = self.get_option_by_name('_write').value
         if config_file_type not in ('conf', 'ini', 'json'):
             raise Exception('unknown config file type')
+        app = self.get_option_by_name('_application')
+        try:
+            app_name = app.value.app_name
+        except AttributeError, x:
+            app_name = 'unknown-app'
         config_file_name = os.sep.join(
             [self.get_option_by_name('config_path').value,
-             '%s.%s' % (self.application_name, config_file_type)])
+             '%s.%s' % (app_name, config_file_type)])
         with open(config_file_name, 'w') as f:
             if config_file_type == 'conf':
                 self.write_conf(output_stream=f,
@@ -933,8 +940,12 @@ class ConfigurationManager(object):
 
     #--------------------------------------------------------------------------
     def log_config(self, logger):
-        logger.info("app_name: %s", self.application_name)
-        logger.info("app version: %s", self.application_version)
+        app = self.get_option_by_name('_application')
+        try:
+            logger.info("app_name: %s", app.value.app_name)
+            logger.info("app_version: %s", app.value.app_version)
+        except AttributeError, x:
+            pass
         logger.info("current configuration:")
         config = [(qkey, val.value) for qkey, key, val in
                                       self.walk_config(self.option_definitions)
