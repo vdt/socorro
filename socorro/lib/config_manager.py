@@ -386,9 +386,7 @@ class ConfigurationManager(object):
                  auto_help=True,
                  manager_controls=True,
                  quit_after_admin=True,
-                 application_name='',
-                 application_version='',
-                 application_doc=''
+                 options_banned_from_help=['_application'],
                  ):
 
         self.option_definitions = Namespace()
@@ -407,12 +405,9 @@ class ConfigurationManager(object):
         self.help = False
         self.admin_tasks_done = False
         self.manager_controls = manager_controls
-        self.application_name = application_name
-        self.application_version = application_version
-        self.application_doc = application_doc
         self.manager_controls_list = ['help', '_write', 'config_path',
                                       '_application']
-        self.options_barred_from_help = ['_application']
+        self.options_banned_from_help = options_banned_from_help
 
         if self.auto_help:
             self.setup_auto_help()
@@ -443,10 +438,6 @@ class ConfigurationManager(object):
         self.overlay_settings(ignore_mismatches=False)
 
         if self.auto_help and self.get_option_by_name('help').value:
-            if self.application_name:
-                print self.application_name, self.application_version
-            if self.application_doc:
-                print self.application_doc
             self.output_summary()
             self.help = True
             self.admin_tasks_done = True
@@ -461,14 +452,22 @@ class ConfigurationManager(object):
     #--------------------------------------------------------------------------
     def read_config_files(self):
     # try ini file
+        app = self.get_option_by_name('_application')
+        try:
+            application_name = app.value.app_name
+        except AttributeError:
+            self.ini_source = None
+            self.conf_source = None
+            self.json_source = None
+            return
         path = self.get_option_by_name('config_path').value
-        file_name = os.path.join(path, '%s.ini' % self.application_name)
+        file_name = os.path.join(path, '%s.ini' % application_name)
         self.ini_source = OptionsByIniFile(file_name)
         # try conf file
-        file_name = os.path.join(path, '%s.conf' % self.application_name)
+        file_name = os.path.join(path, '%s.conf' % application_name)
         self.conf_source = OptionsByConfFile(file_name)
         # try json file
-        file_name = os.path.join(path, '%s.json' % self.application_name)
+        file_name = os.path.join(path, '%s.json' % application_name)
         try:
             with open(file_name) as j_file:
                 self.json_source = json.load(j_file)
@@ -628,7 +627,7 @@ class ConfigurationManager(object):
             if isinstance(a_settings_source, coll.Mapping):
                 self.overlay_config_recurse(a_settings_source,
                                             ignore_mismatches=True)
-            else:
+            elif a_settings_source:
                 options = a_settings_source.get_values(self,
                                         ignore_mismatches=ignore_mismatches)
                 self.overlay_config_recurse(options,
@@ -767,10 +766,20 @@ class ConfigurationManager(object):
           outputTemplatePrefixForNo: a string template for the first part of a
           listing where there is no single letter form of the command
         """
+        app = self.get_option_by_name('_application')
+        try:
+            print >> output_stream, "%s %s" % (app.value.app_name,
+                                               app.value.app_version)
+        except AttributeError, x:
+            pass
+        try:
+            print >> output_stream, app.value.app_doc
+        except AttributeError:
+            pass
         names_list = self.get_option_names()
         names_list.sort()
         for x in names_list:
-            if x in self.options_barred_from_help:
+            if x in self.options_banned_from_help:
                 continue
             option = self.get_option_by_name(x)
             if option.short_form:
@@ -800,7 +809,7 @@ class ConfigurationManager(object):
                 output_parameters['default'] = converter_function(value)
             except KeyError:
                 output_parameters['default'] = output_parameters['value']
-            print >>output_stream, template.format(**output_parameters)
+            print >> output_stream, template.format(**output_parameters)
 
     #--------------------------------------------------------------------------
     def write_config(self):
@@ -846,40 +855,40 @@ class ConfigurationManager(object):
                 continue
             if isinstance(val, Option):
                 if comments:
-                    print >>output_stream, '# name:', qkey
-                    print >>output_stream, '# doc:', val.doc
-                    print >>output_stream, '# converter:', \
+                    print >> output_stream, '# name:', qkey
+                    print >> output_stream, '# doc:', val.doc
+                    print >> output_stream, '# converter:', \
                         classes_and_functions_to_str(val.from_string_converter)
                 if block_password and 'password' in val.name.lower():
-                    print >>output_stream, '%s=********\n' % qkey
+                    print >> output_stream, '%s=********\n' % qkey
                 else:
                     val_str = self.option_value_str(val)
-                    print >>output_stream, '%s=%s\n' % (qkey, val_str)
+                    print >> output_stream, '%s=%s\n' % (qkey, val_str)
             else:
-                print >>output_stream, '#%s' % ('-' * 79)
-                print >>output_stream, '# %s - %s\n' % (key, val._doc)
+                print >> output_stream, '#%s' % ('-' * 79)
+                print >> output_stream, '# %s - %s\n' % (key, val._doc)
 
     #--------------------------------------------------------------------------
     def write_ini(self,
                   output_stream=sys.stdout,
                   block_password=True):
-        print >>output_stream, '[top_level]'
+        print >> output_stream, '[top_level]'
         for qkey, key, val in self.walk_config(self.option_definitions):
             if qkey in self.manager_controls_list:
                 continue
             if isinstance(val, Namespace):
-                print >>output_stream, '[%s]' % key
-                print >>output_stream, '# %s\n' % val._doc
+                print >> output_stream, '[%s]' % key
+                print >> output_stream, '# %s\n' % val._doc
             else:
-                print >>output_stream, '# name:', qkey
-                print >>output_stream, '# doc:', val.doc
-                print >>output_stream, '# converter:', \
+                print >> output_stream, '# name:', qkey
+                print >> output_stream, '# doc:', val.doc
+                print >> output_stream, '# converter:', \
                       classes_and_functions_to_str(val.from_string_converter)
                 if block_password and 'password' in val.name.lower():
-                    print >>output_stream, '%s=********\n' % key
+                    print >> output_stream, '%s=********\n' % key
                 else:
                     val_str = self.option_value_str(val)
-                    print >>output_stream, '%s=%s\n' % (key, val_str)
+                    print >> output_stream, '%s=%s\n' % (key, val_str)
 
     #--------------------------------------------------------------------------
     def str_safe_option_definitions(self, source=None, destination=None):
@@ -920,7 +929,7 @@ class ConfigurationManager(object):
                    block_password=True):
         json_dict = self.str_safe_option_definitions()
         json_str = json.dumps(json_dict)
-        print >>output_stream, json_str
+        print >> output_stream, json_str
 
     #--------------------------------------------------------------------------
     def log_config(self, logger):

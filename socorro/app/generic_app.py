@@ -35,11 +35,7 @@ def main(application_class=None):
                        lc.required_config(application_name),
                       ]
 
-    config_manager = cm.ConfigurationManager(definition_list,
-                                    application_name=application_name,
-                                    application_version=application_version,
-                                    application_doc=application_doc,
-                                            )
+    config_manager = cm.ConfigurationManager(definition_list)
     config = config_manager.get_config()
 
     logger = logging.getLogger(config._application.app_name)
