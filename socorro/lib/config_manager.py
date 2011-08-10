@@ -331,6 +331,7 @@ class OptionsByIniFile(object):
                  top_level_section_name='top_level'):
         if isinstance(source, str):
             parser = cp.RawConfigParser()
+            parser.optionxform = str
             parser.read(source)
             self.configparser = parser
         else:  # a real config parser was loaded
