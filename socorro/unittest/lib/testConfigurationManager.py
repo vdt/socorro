@@ -1,214 +1,992 @@
-import unittest
-import sys
-import os
-import copy
-import cStringIO
-import datetime
+import datetime as dt
+from contextlib import contextmanager
+import ConfigParser
+import io
+import StringIO as sio
+import json
+import functools
 
-### DynamicConfig and its module should be a drop-in replacement for Config and its module
-### The line below works, but it seemed overkill to duplicate the whole test so
-### Just left this here as a reminder to play with it from time to time.
-#import socorro.lib.ConfigurationManager as CM
-import socorro.lib.dynamicConfigurationManager as CM
+import socorro.unittest.testlib.expectations as exp
+import socorro.lib.config_manager as cm
+import socorro.lib.util as sutil
 
-import socorro.unittest.testlib.util as tutil
+def do_assert(r, e):
+    assert r == e, 'expected\n%s\nbut got\n%s' % (e, r)
 
-import optionfile
 
-def setup_module():
-  tutil.nosePrintModule(__file__)
+def test_option_constructor_1 ():
+    o = cm.Option()
+    do_assert(o.name, None)
+    do_assert(o.default, None)
+    do_assert(o.doc, None)
+    do_assert(o.from_string_converter, None)
+    do_assert(o.value, None)
 
-class HelpHandler:
-  def __init__(self):
-    self.data = ''
-  def handleHelp(self, config):  
-    self.stringIO = cStringIO.StringIO()
-    config.outputCommandSummary(self.stringIO,False)
-    self.data = self.stringIO.getvalue()
-    self.stringIO.close()
+    o = cm.Option('lucy')
+    do_assert(o.name, 'lucy')
+    do_assert(o.default, None)
+    do_assert(o.doc, None)
+    do_assert(o.from_string_converter, None)
+    do_assert(o.value, None)
 
-class TestConfigurationManager(unittest.TestCase):
-  def __findConfigTstPath(self):
-    if os.path.exists(os.path.join('.','config.tst')):
-      return os.path.join('.','config.tst')
-    # else
-    dir = os.path.split(__file__)[0]
-    return os.path.join(dir,'config.tst')
-#     for dirpath,dirnames,filenames in os.walk("."):
-#       if 'config.tst' in filenames:
-#         return os.path.join(dirpath,'config.tst');
-#     return os.path.join('.','config.tst') # this will give a nice failure message
+    d = { 'name': 'lucy',
+          'default': 1,
+          'doc': "lucy's integer"
+        }
+    o = cm.Option(**d)
+    do_assert(o.name, 'lucy')
+    do_assert(o.default, 1)
+    do_assert(o.doc, "lucy's integer")
+    do_assert(o.from_string_converter, int)
+    do_assert(o.value, 1)
 
-  def setUp(self):
-    self.keepargv = copy.copy(sys.argv)
-    self.keepenviron = os.environ.copy()
-    self.configTstPath = self.__findConfigTstPath()
-    assert os.path.exists(self.configTstPath), "Why is this not in existence: %s"%(self.configTstPath)
-    # all our tests depend on setting their own sys.argv AFTER the test has begun to run
-    # In order to avoid trouble, blow away all the params that nosetests should 'use up'
-    if 'nosetests' in sys.argv[0]:
-      sys.argv = sys.argv[:1] # yes: Throw away all the params but the executable name
-    
-  def tearDown(self):
-    sys.argv = copy.copy(self.keepargv)
-    os.environ = self.keepenviron.copy()
+    d = { 'name': 'lucy',
+          'default': 1,
+          'doc': "lucy's integer",
+          'value': '1'
+        }
+    o = cm.Option(**d)
+    do_assert(o.name, 'lucy')
+    do_assert(o.default, 1)
+    do_assert(o.doc, "lucy's integer")
+    do_assert(o.from_string_converter, int)
+    do_assert(o.value, 1)
 
-  def testNewConfiguration(self):
-    '''
-    TestConfigurationManager.testNewConfiguration(self)
-    Trick: To call f(**kwargs) with a dictionary d as the single arg, chant f(**d)
-    '''
-    opts = []
-    args = {}
-    args['automaticHelp'] = False
+    d = { 'name': 'lucy',
+          'default': '1',
+          'doc': "lucy's integer",
+          'from_string_converter': int
+        }
+    o = cm.Option(**d)
+    do_assert(o.name, 'lucy')
+    do_assert(o.default, '1')
+    do_assert(o.doc, "lucy's integer")
+    do_assert(o.from_string_converter, int)
+    do_assert(o.value, 1)
 
-    # Test for empty
-    conf = CM.newConfiguration(**args)
-    assert(not conf.internal.allowableOptionDictionary)
+    d = { 'name': 'lucy',
+          'default': '1',
+          'doc': "lucy's integer",
+          'from_string_converter': int,
+          'other': 'no way'
+        }
+    o = cm.Option(**d)
+    do_assert(o.name, 'lucy')
+    do_assert(o.default, '1')
+    do_assert(o.doc, "lucy's integer")
+    do_assert(o.from_string_converter, int)
+    do_assert(o.value, 1)
 
-    # Test for autoHelp
-    args['automaticHelp'] = True
-    conf = CM.newConfiguration(**args)
-    assert(2 == len(conf.internal.allowableOptionDictionary))
+    d = { 'default': '1',
+          'doc': "lucy's integer",
+          'from_string_converter': int,
+          'other': 'no way'
+        }
+    o = cm.Option(**d)
+    do_assert(o.name, None)
+    do_assert(o.default, '1')
+    do_assert(o.doc, "lucy's integer")
+    do_assert(o.from_string_converter, int)
+    do_assert(o.value, 1)
 
-    # Test for another legal option
-    opts.append(('c','chickensoup',False,False,'Help for the ailing'))
-    args['automaticHelp'] = True
-    args['configurationOptionsList'] = opts
-    conf = CM.newConfiguration(**args)
-    assert(4 == len(conf.internal.allowableOptionDictionary))
+    d = dt.datetime.now()
+    o = cm.Option(name='now', default=d)
+    do_assert(o.name, 'now')
+    do_assert(o.default, d)
+    do_assert(o.doc, None)
+    do_assert(o.from_string_converter, cm.datetime_converter)
+    do_assert(o.value, d)
 
-    # Test a config module
-    conf = CM.newConfiguration(automaticHelp=False,configurationModule=optionfile)
-    cd = conf.internal.allowableOptionDictionary
-    assert(5 == len(cd)),'but cd is %s'%cd
-    assert ['T', 'testSingleCharacter', True, None] == cd.get('T')[:-1],'but got %s' % (str(cd.get('T')[:-1]))
-    assert 'testSingleCharacter imported from' in cd.get('T')[-1],'but got %s' % (str(cd.get('T')[-1]))
-    assert 'optionfile' in cd.get('T')[-1],'but got %s' % (str(cd.get('T')[-1]))
-    #assert ['T', 'testSingleCharacter', True, None, 'testSingleCharacter imported from optionfile'] == cd.get('T'),'but got %s' % (str(cd.get('T')))
-    assert [None, 'testDefault', True, 'default'] == cd.get('testDefault')[:-1], "but got %s" %(str(cd.get('testDefault')[:-1]))
-    assert 'testDefault imported from' in cd.get('testDefault')[-1], "but got %s" %(cd.get('testDefault')[-1])
-    assert 'optionfile' in cd.get('testDefault')[-1],  "but got %s" %(cd.get('testDefault')[-1])
-    #assert([None, 'testDefault', True, 'default', 'testDefault imported from optionfile'] == cd.get('testDefault'))
-    assert([None, 'testDoc', True, None, 'test doc'] == cd.get('testDoc'))
-    assert [None, 'testNil', True, None] == cd.get('testNil')[:-1], "but got %s" %(str(cd.get('testNil')[:-1]))
-    assert 'testNil imported from' in cd.get('testNil')[-1], "but got %s" %(cd.get('testNil')[-1])
-    assert 'optionfile' in cd.get('testNil')[-1], "but got %s" %(cd.get('testNil')[-1])
-    #assert([None, 'testNil', True, None, 'testNil imported from optionfile'] == cd.get('testNil'))
+def test_OptionsByGetOpt01():
+    source = [ 'a', 'b', 'c' ]
+    o = cm.OptionsByGetopt(source)
+    do_assert(o.argv_source, source)
+    o = cm.OptionsByGetopt(argv_source=source)
+    do_assert(o.argv_source, source)
 
-    # Test failure with good option, bad file
+def test_OptionsByGetOpt02():
+    args = [ 'a', 'b', 'c' ]
+    o, a = cm.OptionsByGetopt.getopt_with_ignore(args, '', [])
+    do_assert([], o)
+    do_assert(a, args)
+    args = [ '-a', '14', '--fred', 'sally', 'ethel', 'dwight' ]
+    o, a = cm.OptionsByGetopt.getopt_with_ignore(args, '', [])
+    do_assert([], o)
+    do_assert(a, args)
+    args = [ '-a', '14', '--fred', 'sally', 'ethel', 'dwight' ]
+    o, a = cm.OptionsByGetopt.getopt_with_ignore(args, 'a:', [])
+    do_assert(o, [('-a', '14')])
+    do_assert(a,['--fred', 'sally', 'ethel', 'dwight'])
+    args = [ '-a', '14', '--fred', 'sally', 'ethel', 'dwight' ]
+    o, a = cm.OptionsByGetopt.getopt_with_ignore(args, 'a', ['fred='])
+    do_assert(o, [('-a', ''), ('--fred', 'sally')])
+    do_assert(a,['14', 'ethel', 'dwight'])
+
+
+def test_empty_ConfigurationManager_constructor():
+    c = cm.ConfigurationManager(manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions, cm.Namespace())
+
+def test_namespace_constructor_0():
+    """test_namespace_constructor_0: test namespace definition"""
+    n = cm.Namespace('doc string')
+    n.alpha = 1
+    my_birthday = dt.datetime(1960,5,4,15,10)
+    n.beta = my_birthday
+    do_assert(n.alpha.name, 'alpha')
+    do_assert(n.alpha.doc, None)
+    do_assert(n.alpha.default, 1)
+    do_assert(n.alpha.from_string_converter, int)
+    do_assert(n.alpha.value, 1)
+    do_assert(n.beta.name, 'beta')
+    do_assert(n.beta.doc, None)
+    do_assert(n.beta.default, my_birthday)
+    do_assert(n.beta.from_string_converter, cm.datetime_converter)
+    do_assert(n.beta.value, my_birthday)
+    do_assert(n._doc, 'doc string')
+
+
+def test_namespace_constructor_1():
+    """test_namespace_constructor_1: test namespace definition"""
+    n = cm.Namespace()
+    n.a = cm.Option()
+    n.a.name = 'a'
+    n.a.default = 1
+    n.a.doc = 'the a'
+    n.b = 17
+    c = cm.ConfigurationManager([n],
+                                use_config_files=False,
+                                )
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+
+
+
+def test_namespace_constructor_2():
+    """test_namespace_constructor_2: test list definition"""
+    l = [ (None, 'a', True, 1, 'the a'),
+          (None, 'b', True, 17, '') ]
+    c = cm.ConfigurationManager([l],
+                                use_config_files=False,
+                                )
+    do_assert(type(c.option_definitions.a), cm.Option)
+    do_assert(c.option_definitions.a.value, 1)
+    do_assert(c.option_definitions.a.default, 1)
+    do_assert(c.option_definitions.a.name, 'a')
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+
+def test_namespace_constructor_3():
+    """test_namespace_constructor_3: test json definition"""
+
+    j = '{ "a": {"name": "a", "default": 1, "doc": "the a"}, "b": 17}'
+    c = cm.ConfigurationManager([j],
+                                use_config_files=False,
+                                )
+    do_assert(type(c.option_definitions.a), cm.Option)
+    do_assert(c.option_definitions.a.value, 1)
+    do_assert(c.option_definitions.a.default, 1)
+    do_assert(c.option_definitions.a.name, 'a')
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+
+def test_get_config_1():
+    n = cm.Namespace()
+    n.a = cm.Option('a', 'the a', 1)
+    n.b = 17
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    d = c.get_config()
+    e = sutil.DotDict()
+    e.a = 1
+    e.b = 17
+    do_assert(d, e)
+
+def test_get_config_2():
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', default=1, doc='the a')
+    n.b = 17
+    n.c = c = cm.Namespace()
+    c.x = 'fred'
+    c.y = 3.14159
+    c.z = cm.Option('z', 'the 99', 99)
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    d = c.get_config()
+    e = sutil.DotDict()
+    e.a = 1
+    e.b = 17
+    e.c = sutil.DotDict()
+    e.c.x = 'fred'
+    e.c.y = 3.14159
+    e.c.z = 99
+    do_assert(d, e)
+
+def test_walk_config():
+    """test_walk_config: step through them all"""
+    n = cm.Namespace(doc='top')
+    n.aaa = cm.Option('aaa', 'the a', False, short_form='a')
+    n.c = cm.Namespace(doc='c space')
+    n.c.fred = cm.Option('fred', 'husband from Flintstones')
+    n.c.wilma = cm.Option('wilma', 'wife from Flintstones')
+    n.d = cm.Namespace(doc='d space')
+    n.d.fred = cm.Option('fred', 'male neighbor from I Love Lucy')
+    n.d.ethel = cm.Option('ethel', 'female neighbor from I Love Lucy')
+    n.d.x = cm.Namespace(doc='x space')
+    n.d.x.size = cm.Option('size', 'how big in tons', 100, short_form='s')
+    n.d.x.password = cm.Option('password', 'the password', 'secrets')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    e = [('aaa', 'aaa', n.aaa.name),
+         ('c', 'c', n.c._doc),
+         ('c.wilma', 'wilma', n.c.wilma.name),
+         ('c.fred', 'fred', n.c.fred.name),
+         ('d', 'd', n.d._doc),
+         ('d.ethel', 'ethel', n.d.ethel.name),
+         ('d.fred', 'fred', n.d.fred.name),
+         ('d.x', 'x', n.d.x._doc),
+         ('d.x.size', 'size', n.d.x.size.name),
+         ('d.x.password', 'password', n.d.x.password.name),
+        ]
+    e.sort()
+    r = [(q, k, v.name if isinstance(v, cm.Option) else v._doc)
+          for q, k, v in c.walk_config()]
+    r.sort()
+    for expected, received in zip(e, r):
+        do_assert(received, expected)
+
+def some_namespaces():
+    """set up some namespaces"""
+    n = cm.Namespace(doc='top')
+    n.aaa = cm.Option('aaa', 'the a', '2011-05-04T15:10:00', short_form='a',
+                      from_string_converter=cm.datetime_converter)
+    n.c = cm.Namespace(doc='c space')
+    n.c.fred = cm.Option('fred', 'husband from Flintstones', default='stupid')
+    n.c.wilma = cm.Option('wilma', 'wife from Flintstones', default='waspish')
+    n.d = cm.Namespace(doc='d space')
+    n.d.fred = cm.Option('fred', 'male neighbor from I Love Lucy', default='crabby')
+    n.d.ethel = cm.Option('ethel', 'female neighbor from I Love Lucy', default='silly')
+    n.x = cm.Namespace(doc='x space')
+    n.x.size = cm.Option('size', 'how big in tons', 100, short_form='s')
+    n.x.password = cm.Option('password', 'the password', 'secrets')
+    return n
+
+def test_write_flat():
+    n = some_namespaces()
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    expected = \
+"""# name: aaa
+# doc: the a
+# converter: socorro.lib.config_manager.datetime_converter
+aaa=2011-05-04T15:10:00
+
+#-------------------------------------------------------------------------------
+# c - c space
+
+# name: c.fred
+# doc: husband from Flintstones
+# converter: str
+c.fred=stupid
+
+# name: c.wilma
+# doc: wife from Flintstones
+# converter: str
+c.wilma=waspish
+
+#-------------------------------------------------------------------------------
+# d - d space
+
+# name: d.ethel
+# doc: female neighbor from I Love Lucy
+# converter: str
+d.ethel=silly
+
+# name: d.fred
+# doc: male neighbor from I Love Lucy
+# converter: str
+d.fred=crabby
+
+#-------------------------------------------------------------------------------
+# x - x space
+
+# name: x.password
+# doc: the password
+# converter: str
+x.password=********
+
+# name: x.size
+# doc: how big in tons
+# converter: int
+x.size=100
+"""
+    s = sio.StringIO()
+    c.write_conf(output_stream=s)
+    received = s.getvalue()
+    s.close()
+    for e, r in zip(expected.split('\n'), received.split('\n')):
+        do_assert(r, e)
+
+def test_write_ini():
+    n = some_namespaces()
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    expected = """[top_level]
+# name: aaa
+# doc: the a
+# converter: socorro.lib.config_manager.datetime_converter
+aaa=2011-05-04T15:10:00
+
+[c]
+# c space
+
+# name: c.fred
+# doc: husband from Flintstones
+# converter: str
+fred=stupid
+
+# name: c.wilma
+# doc: wife from Flintstones
+# converter: str
+wilma=waspish
+
+[d]
+# d space
+
+# name: d.ethel
+# doc: female neighbor from I Love Lucy
+# converter: str
+ethel=silly
+
+# name: d.fred
+# doc: male neighbor from I Love Lucy
+# converter: str
+fred=crabby
+
+[x]
+# x space
+
+# name: x.password
+# doc: the password
+# converter: str
+password=********
+
+# name: x.size
+# doc: how big in tons
+# converter: int
+size=100
+"""
+    s = sio.StringIO()
+    c.write_ini(output_stream=s)
+    received = s.getvalue()
+    s.close()
+    print received
+    for e, r in zip(expected.split('\n'), received.split('\n')):
+        do_assert(r, e)
+
+
+def test_write_json():
+    n = some_namespaces()
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    expected = '{"x": {"password": {"default": "secrets", "name": "password", "from_string_converter": "str", "doc": "the password", "value": "secrets", "short_form": null}, "size": {"default": "100", "name": "size", "from_string_converter": "int", "doc": "how big in tons", "value": "100", "short_form": "s"}}, "c": {"wilma": {"default": "waspish", "name": "wilma", "from_string_converter": "str", "doc": "wife from Flintstones", "value": "waspish", "short_form": null}, "fred": {"default": "stupid", "name": "fred", "from_string_converter": "str", "doc": "husband from Flintstones", "value": "stupid", "short_form": null}}, "aaa": {"default": "2011-05-04T15:10:00", "name": "aaa", "from_string_converter": "socorro.lib.config_manager.datetime_converter", "doc": "the a", "value": "2011-05-04T15:10:00", "short_form": "a"}, "d": {"ethel": {"default": "silly", "name": "ethel", "from_string_converter": "str", "doc": "female neighbor from I Love Lucy", "value": "silly", "short_form": null}, "fred": {"default": "crabby", "name": "fred", "from_string_converter": "str", "doc": "male neighbor from I Love Lucy", "value": "crabby", "short_form": null}}}'
+    jexp = json.loads(expected)
+    s = sio.StringIO()
+    c.write_json(output_stream=s)
+    received = s.getvalue()
+    s.close()
+    jrec = json.loads(received)
+    do_assert(jrec, jexp)
+    # let's make sure that we can do a complete round trip
+    c2 = cm.ConfigurationManager([jrec],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    s = sio.StringIO()
+    c2.write_json(output_stream=s)
+    received2 = s.getvalue()
+    s.close()
+    jrec2 = json.loads(received2)
+    do_assert(jrec2, jexp)
+
+def test_overlay_config_1():
+    n = cm.Namespace()
+    n.a = cm.Option()
+    n.a.name = 'a'
+    n.a.default = 1
+    n.a.doc = 'the a'
+    n.b = 17
+    n.c = c = cm.Namespace()
+    c.x = 'fred'
+    c.y = 3.14159
+    c.z = cm.Option()
+    c.z.default = 99
+    c.z.doc = 'the 99'
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    o = { "a": 2, "c.z": 22, "c.x": 'noob', "c.y": "2.89" }
+    c.overlay_config_recurse(o)
+    d = c.get_config()
+    e = sutil.DotDict()
+    e.a = 2
+    e.b = 17
+    e.c = sutil.DotDict()
+    e.c.x = 'noob'
+    e.c.y = 2.89
+    e.c.z = 22
+    do_assert(d, e)
+
+def test_overlay_config_2():
+    n = cm.Namespace()
+    n.a = cm.Option()
+    n.a.name = 'a'
+    n.a.default = 1
+    n.a.doc = 'the a'
+    n.b = 17
+    n.c = c = cm.Namespace()
+    c.x = 'fred'
+    c.y = 3.14159
+    c.z = cm.Option()
+    c.z.default = 99
+    c.z.doc = 'the 99'
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    o = { "a": 2, "c.z": 22, "c.x": 'noob', "c.y": "2.89", "n": "not here" }
+    c.overlay_config_recurse(o, ignore_mismatches=True)
+    d = c.get_config()
+    e = sutil.DotDict()
+    e.a = 2
+    e.b = 17
+    e.c = sutil.DotDict()
+    e.c.x = 'noob'
+    e.c.y = 2.89
+    e.c.z = 22
+    do_assert(d, e)
+
+def test_overlay_config_3():
+    n = cm.Namespace()
+    n.a = cm.Option()
+    n.a.name = 'a'
+    n.a.default = 1
+    n.a.doc = 'the a'
+    n.b = 17
+    n.c = c = cm.Namespace()
+    c.x = 'fred'
+    c.y = 3.14159
+    c.z = cm.Option()
+    c.z.default = 99
+    c.z.doc = 'the 99'
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    o = { "a": 2, "c.z": 22, "c.x": 'noob', "c.y": "2.89", "c.n": "not here" }
     try:
-      copt = [('c',  'config', True, './badone', "the badconfig file")]
-      CM.newConfiguration(configurationOptionsList=copt,optionNameForConfigFile = 'config', configurationFileRequired = True)
-      assert(False)
-    except CM.ConfigFileMissingError, e:
-      assert(True)
-    except Exception, e:
-      assert(False)
-    # Test failure with bad option, good file
-    try:
-      copt = [('c',  'cdvfrbgt', True, './config.tst', "the test config file")]
-      CM.newConfiguration(automaticHelp=False,configurationOptionsList=copt,optionNameForConfigFile = 'config', configurationFileRequired = True)
-      assert(False)
-    except CM.ConfigFileOptionNameMissingError, e:
-      assert(True)
-    except Exception, e:
-      assert(False)
+        c.overlay_config_recurse(o, ignore_mismatches=False)
+    except cm.NotAnOptionError:
+        pass
 
-  def testAcceptAutoCommandLineHelp(self):
-    opts = []
-    args = {}
-    args['automaticHelp'] = True
-    args['configurationOptionsList'] = opts
-    hh = HelpHandler()
-    args['helpHandler'] = hh.handleHelp
-    sys.argv.append('--help')
-    conf = CM.newConfiguration(**args)
-    assert("--help" in hh.data)
-    assert("print this list" in hh.data)
+def test_overlay_config_4():
+    """test_namespace_constructor_4: test overlay dict w/flat source dict"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    g = { 'a': 2, 'c.extra': 2.89 }
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 2)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 2.89)
 
-  def testAcceptUserCommandLineHelp(self):
-    opts = [('h','help',False,False,'another help')]
-    args = {}
-    args['automaticHelp'] = False
-    args['configurationOptionsList'] = opts
-    hh = HelpHandler()
-    args['helpHandler'] = hh.handleHelp
-    sys.argv.append('--help')
-    conf = CM.newConfiguration(**args)
-    assert("--help" in hh.data)
-    assert("another help" in hh.data)
+def test_overlay_config_4a():
+    """test_namespace_constructor_4a: test overlay dict w/deep source dict"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    g = { 'a': 2, 'c': {'extra': 2.89 }}
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 2)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 2.89)
 
-  def testAcceptCommandLine(self):
-    opts = []
-    args = {}
-    opts.append(('c','chickensoup',False,False,'help for the ailing'))
-    opts.append(('r','rabbit', True, '', 'rabbits are bunnies'))
-    args['configurationOptionsList'] = opts
-    sys.argv.append('-c')
-    sys.argv.append('--rabbit=bunny')
-    conf = CM.newConfiguration(**args)
-    assert('chickensoup' in conf)
-    assert('rabbit' in conf)
-    assert('bunny' == conf.rabbit)
+def test_overlay_config_5():
+    """test_overlay_config_5: test namespace definition w/getopt"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Option(name='c', doc='the c', default=False)
+    g = cm.OptionsByGetopt(argv_source=['--a', '2', '--c'])
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 2)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.name, 'c')
+    do_assert(c.option_definitions.c.value, True)
 
-  def testAcceptEnvironment(self):
-    opts = []
-    args = {}
-    opts.append(('c','chickensoup',False,False,'help for the ailing'))
-    opts.append(('r','rabbit', True, '', 'rabbits are bunnies'))
-    args['configurationOptionsList'] = opts
-    os.environ['chickensoup']=''
-    os.environ['r'] = 'bunny-rabbit'
-    conf = CM.newConfiguration(**args)
-    assert('chickensoup' in conf)
-    assert('rabbit' in conf)
-    assert('bunny-rabbit' == conf.rabbit)
+def test_overlay_config_6():
+    """test_overlay_config_6: test namespace definition w/getopt"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', short_form='e', doc='the x',
+                          default=3.14159)
+    g = cm.OptionsByGetopt(argv_source=['--a', '2', '--c.extra', '11.0'])
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 2)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 11.0)
 
-  def testAcceptConfigFile(self):
-    # Test failure with good config file, unknown option in that file
-    try:
-      copt = [('c',  'config', True, self.configTstPath, "the test config file")]
-      CM.newConfiguration(configurationOptionsList=copt,optionNameForConfigFile = 'config', configurationFileRequired = True)
-      assert(False)
-    except CM.NotAnOptionError, e:
-      assert(True)
-    except Exception, e:
-      assert(False), "Unexpected exception (%s): %s"% (type(e),e)
+def test_overlay_config_6a():
+    """test_overlay_config_6a: test namespace w/getopt w/short form"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', short_form='e', doc='the x',
+                          default=3.14159)
+    g = cm.OptionsByGetopt(argv_source=['--a', '2', '-e', '11.0'])
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 2)
+    do_assert(c.option_definitions.b.value, 17)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 11.0)
 
-    copt = [('c',  'config', True, self.configTstPath, "the test config file"),('r','rabbit', True, 'bambi', 'rabbits are bunnies')]
-    copt.append(('b','badger',True,'gentle','some badgers are gentle'))
-    conf = CM.newConfiguration(automaticHelp=False,configurationOptionsList=copt,optionNameForConfigFile = 'config', configurationFileRequired = True)
-    assert('bunny' == conf.rabbit)
-    assert('this badger=awful' == conf.badger)
-    assert(3 == len(conf.keys())) # None of the comment or blank lines got eaten
+def test_overlay_config_7():
+    """test_overlay_config_7: test namespace definition flat file"""
+    n = cm.Namespace()
+    n.a = cm.Option(name='a', doc='the a', default=1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    n.c.string = cm.Option(name='string', doc='str', default='fred')
+    @contextmanager
+    def dummy_open(filename):
+        yield ['# comment line to be ignored\n',
+               '\n', # blank line to be ignored
+               'a=22\n',
+               'b = 33\n',
+               'c.extra = 2.0\n',
+               'c.string =   wilma\n'
+              ]
+    g = cm.OptionsByConfFile('dummy-filename', dummy_open)
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.a, n.a)
+    do_assert(type(c.option_definitions.b), cm.Option)
+    do_assert(c.option_definitions.a.value, 22)
+    do_assert(c.option_definitions.b.value, 33)
+    do_assert(c.option_definitions.b.default, 17)
+    do_assert(c.option_definitions.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 2.0)
+    do_assert(c.option_definitions.c.string.name, 'string')
+    do_assert(c.option_definitions.c.string.doc, 'str')
+    do_assert(c.option_definitions.c.string.default, 'fred')
+    do_assert(c.option_definitions.c.string.value, 'wilma')
 
-  def testAcceptTypePriority(self):
-    '''testConfigurationManager:TestConfigurationManager.testAcceptTypePriority
-    Assure that commandline beats config file beats environment beats defaults'''
-    copt = [('c',  'config', True, self.configTstPath, "the test config file"),('r','rabbit', True, 'bambi', 'rabbits are bunnies')]
-    copt.append(('b','badger',True,'gentle','some badgers are gentle'))
-    copt.append(('z','zeta', True, 'zebra', 'zebras ooze'))
-    os.environ['badger'] = 'bloody'
-    os.environ['zeta'] = 'zymurgy'
-    sys.argv.append('--rabbit=kangaroo')
-    conf = CM.newConfiguration(automaticHelp=False,configurationOptionsList=copt,optionNameForConfigFile = 'config', configurationFileRequired = True)
-    assert('kangaroo' == conf.rabbit) # command line beats config file
-    assert('this badger=awful' == conf.badger) # config file beats environment
-    assert('zymurgy' == conf.zeta)
+def test_overlay_config_8():
+    """test_overlay_config_8: test namespace definition ini file"""
+    n = cm.Namespace()
+    n.other = cm.Namespace()
+    n.other.t = cm.Option('t', 'the t', 'tee')
+    n.d = cm.Namespace()
+    n.d.a = cm.Option(name='a', doc='the a', default=1)
+    n.d.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    n.c.string = cm.Option(name='string', doc='str', default='fred')
+    ini_data = """
+[other]
+t=tea
+[d]
+# blank line to be ignored
+a=22
+b = 33
+[c]
+extra = 2.0
+string =   wilma
+"""
+    #config = ConfigParser.RawConfigParser(allow_no_value=True)
+    config = ConfigParser.RawConfigParser()
+    config.readfp(io.BytesIO(ini_data))
+    g = cm.OptionsByIniFile(config)
+    c = cm.ConfigurationManager([n], [g],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.other.t.name, 't')
+    do_assert(c.option_definitions.other.t.value, 'tea')
+    do_assert(c.option_definitions.d.a, n.d.a)
+    do_assert(type(c.option_definitions.d.b), cm.Option)
+    do_assert(c.option_definitions.d.a.value, 22)
+    do_assert(c.option_definitions.d.b.value, 33)
+    do_assert(c.option_definitions.d.b.default, 17)
+    do_assert(c.option_definitions.d.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 2.0)
+    do_assert(c.option_definitions.c.string.name, 'string')
+    do_assert(c.option_definitions.c.string.doc, 'str')
+    do_assert(c.option_definitions.c.string.default, 'fred')
+    do_assert(c.option_definitions.c.string.value, 'wilma')
 
-  def testTimeDeltaConverter(self):
-    testCases = [
-      ('1',datetime.timedelta(seconds=1)),
-      ('1:2',datetime.timedelta(minutes=1,seconds=2)),
-      ('1:2:3',datetime.timedelta(hours=1,minutes=2,seconds=3)),
-      ('1:2:3:4',datetime.timedelta(days=1,hours=2,minutes=3,seconds=4)),
-      (datetime.timedelta(days=12,microseconds=11),datetime.timedelta(days=12,microseconds=11)),
-      (39,39),
-      ]
-    for t in testCases:
-      val = CM.timeDeltaConverter(t[0])
-      assert t[1] == val,'From %s, got %s (not %s)'%(str(t),str(val),str(t[1]))
+def test_overlay_config_9():
+    """test_overlay_config_9: test namespace definition ini file"""
+    n = cm.Namespace()
+    n.other = cm.Namespace()
+    n.other.t = cm.Option('t', 'the t', 'tee')
+    n.d = cm.Namespace()
+    n.d.a = cm.Option(name='a', doc='the a', default=1)
+    n.d.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    n.c.string = cm.Option(name='string', doc='str', default='fred')
+    ini_data = """
+[other]
+t=tea
+[d]
+# blank line to be ignored
+a=22
+[c]
+extra = 2.0
+string =   from ini
+"""
+    #config = ConfigParser.RawConfigParser(allow_no_value=True)
+    config = ConfigParser.RawConfigParser()
+    config.readfp(io.BytesIO(ini_data))
+    g = cm.OptionsByIniFile(config)
+    e = sutil.DotDict()
+    e.fred = sutil.DotDict() # should be ignored
+    e.fred.t = 'T'  # should be ignored
+    e.d = sutil.DotDict()
+    e.d.a = 16
+    e.c = sutil.DotDict()
+    e.c.extra = 18.6
+    e.c.string = 'from environment'
+    v = cm.OptionsByGetopt(argv_source=['--other.t', 'TTT', '--c.extra', '11.0']
+                           )
+    c = cm.ConfigurationManager([n], [e, g, v],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.other.t.name, 't')
+    do_assert(c.option_definitions.other.t.value, 'TTT')
+    do_assert(c.option_definitions.d.a, n.d.a)
+    do_assert(type(c.option_definitions.d.b), cm.Option)
+    do_assert(c.option_definitions.d.a.value, 22)
+    do_assert(c.option_definitions.d.b.value, 17)
+    do_assert(c.option_definitions.d.b.default, 17)
+    do_assert(c.option_definitions.d.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 11.0)
+    do_assert(c.option_definitions.c.string.name, 'string')
+    do_assert(c.option_definitions.c.string.doc, 'str')
+    do_assert(c.option_definitions.c.string.default, 'fred')
+    do_assert(c.option_definitions.c.string.value, 'from ini')
 
-if __name__ == "__main__":
-  unittest.main()
+def test_overlay_config_10():
+    """test_overlay_config_10: test namespace definition ini file"""
+    n = cm.Namespace()
+    n.t = cm.Option('t', 'the t', 'tee')
+    n.d = cm.Namespace()
+    n.d.a = cm.Option(name='a', doc='the a', default=1)
+    n.d.b = 17
+    n.c = cm.Namespace()
+    n.c.extra = cm.Option(name='extra', doc='the x', default=3.14159)
+    n.c.string = cm.Option(name='string', doc='str', default='fred')
+    ini_data = """
+[top_level]
+t=tea
+[d]
+# blank line to be ignored
+a=22
+[c]
+extra = 2.0
+string =   from ini
+"""
+    #config = ConfigParser.RawConfigParser(allow_no_value=True)
+    config = ConfigParser.RawConfigParser()
+    config.readfp(io.BytesIO(ini_data))
+    g = cm.OptionsByIniFile(config)
+    e = sutil.DotDict()
+    e.top_level = sutil.DotDict()
+    e.top_level.t = 'T'
+    e.d = sutil.DotDict()
+    e.d.a = 16
+    e.c = sutil.DotDict()
+    e.c.extra = 18.6
+    e.c.string = 'from environment'
+    v = cm.OptionsByGetopt(argv_source=['--c.extra', '11.0'])
+    c = cm.ConfigurationManager([n], [e, g, v],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.option_definitions.t.name, 't')
+    do_assert(c.option_definitions.t.value, 'tea')
+    do_assert(c.option_definitions.d.a, n.d.a)
+    do_assert(type(c.option_definitions.d.b), cm.Option)
+    do_assert(c.option_definitions.d.a.value, 22)
+    do_assert(c.option_definitions.d.b.value, 17)
+    do_assert(c.option_definitions.d.b.default, 17)
+    do_assert(c.option_definitions.d.b.name, 'b')
+    do_assert(c.option_definitions.c.extra.name, 'extra')
+    do_assert(c.option_definitions.c.extra.doc, 'the x')
+    do_assert(c.option_definitions.c.extra.default, 3.14159)
+    do_assert(c.option_definitions.c.extra.value, 11.0)
+    do_assert(c.option_definitions.c.string.name, 'string')
+    do_assert(c.option_definitions.c.string.doc, 'str')
+    do_assert(c.option_definitions.c.string.default, 'fred')
+    do_assert(c.option_definitions.c.string.value, 'from ini')
+
+def test_walk_expanding_class_options():
+    class A(cm.RequiredConfig):
+        required_config = { 'a': cm.Option('a', 'the a', 1),
+                            'b': 17,
+                          }
+    n = cm.Namespace()
+    n.source = cm.Namespace()
+    n.source.c = cm.Option(name='c', default=A, doc='the A class')
+    n.dest = cm.Namespace()
+    n.dest.c = cm.Option(name='c', default=A, doc='the A class')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    e = cm.Namespace()
+    e.s = cm.Namespace()
+    e.s.c = cm.Option(name='c', default=A, doc='the A class')
+    e.s.a = cm.Option('a', 'the a', 1)
+    e.s.b = cm.Option('b', default=17)
+    e.d = cm.Namespace()
+    e.d.c = cm.Option(name='c', default=A, doc='the A class')
+    e.d.a = cm.Option('a', 'the a', 1)
+    e.d.b = cm.Option('b', default=17)
+    def namespace_test(val):
+        do_assert(type(val), cm.Namespace)
+    def option_test(val, expected=None):
+        do_assert(val.name, expected.name)
+        do_assert(val.default, expected.default)
+        do_assert(val.doc, expected.doc)
+    e = [ ('dest', 'dest', namespace_test),
+          ('dest.a', 'a', functools.partial(option_test, expected=e.d.a)),
+          ('dest.b', 'b', functools.partial(option_test, expected=e.d.b)),
+          ('dest.c', 'c', functools.partial(option_test, expected=e.d.c)),
+          ('source', 'source', namespace_test),
+          ('source.a', 'a', functools.partial(option_test, expected=e.s.a)),
+          ('source.b', 'b', functools.partial(option_test, expected=e.s.b)),
+          ('source.c', 'c', functools.partial(option_test, expected=e.s.c)),
+        ]
+    c_contents = [(qkey, key, val) for qkey, key, val in c.walk_config()]
+    c_contents.sort()
+    e.sort()
+    print c_contents
+    print e
+    for c_tuple, e_tuple in zip(c_contents, e):
+        qkey, key, val = c_tuple
+        e_qkey, e_key, e_fn = e_tuple
+        do_assert(qkey, e_qkey)
+        do_assert(key, e_key)
+        e_fn(val)
+
+def test_get_option_names():
+    """test_get_option_names: walk 'em"""
+    n = cm.Namespace()
+    n.a = cm.Option('a', 'the a', 1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.fred = cm.Option('fred')
+    n.c.wilma = cm.Option('wilma')
+    n.d = cm.Namespace()
+    n.d.fred = cm.Option('fred')
+    n.d.wilma = cm.Option('wilma')
+    n.d.x = cm.Namespace()
+    n.d.x.size = cm.Option('size')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    names = c.get_option_names()
+    names.sort()
+    e = ['a', 'b', 'c.fred', 'c.wilma', 'd.fred', 'd.wilma', 'd.x.size']
+    e.sort()
+    do_assert(names, e)
+
+def test_get_option_by_name():
+    """test_get_option_by_name: you made them, you can have them back"""
+    n = cm.Namespace()
+    n.a = cm.Option('a', 'the a', 1)
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.fred = cm.Option('fred')
+    n.c.wilma = cm.Option('wilma')
+    n.d = cm.Namespace()
+    n.d.fred = cm.Option('fred')
+    n.d.wilma = cm.Option('wilma')
+    n.d.x = cm.Namespace()
+    n.d.x.size = cm.Option('size')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    do_assert(c.get_option_by_name('a'), n.a)
+    do_assert(c.get_option_by_name('b').name, 'b')
+    do_assert(c.get_option_by_name('c.fred'), n.c.fred)
+    do_assert(c.get_option_by_name('c.wilma'), n.c.wilma)
+    do_assert(c.get_option_by_name('d.fred'), n.d.fred)
+    do_assert(c.get_option_by_name('d.wilma'), n.d.wilma)
+    do_assert(c.get_option_by_name('d.wilma'), n.d.wilma)
+    do_assert(c.get_option_by_name('d.x.size'), n.d.x.size)
+
+def test_output_summary():
+    """test_output_summary: the output from help"""
+    n = cm.Namespace()
+    n.aaa = cm.Option('aaa', 'the a', False, short_form='a')
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.fred = cm.Option('fred', 'husband from Flintstones')
+    n.c.wilma = cm.Option('wilma', 'wife from Flintstones')
+    n.d = cm.Namespace()
+    n.d.fred = cm.Option('fred', 'male neighbor from I Love Lucy')
+    n.d.ethel = cm.Option('ethel', 'female neighbor from I Love Lucy')
+    n.d.x = cm.Namespace()
+    n.d.x.size = cm.Option('size', 'how big in tons', 100, short_form='s')
+    n.d.x.password = cm.Option('password', 'the password', 'secrets')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    s = sio.StringIO()
+    c.output_summary(output_stream=s)
+    r = s.getvalue()
+    s.close()
+    e =  \
+"""	-a, --aaa
+		the a
+	    --b
+		no documentation available (default: 17)
+	    --c.fred
+		husband from Flintstones (default: None)
+	    --c.wilma
+		wife from Flintstones (default: None)
+	    --d.ethel
+		female neighbor from I Love Lucy (default: None)
+	    --d.fred
+		male neighbor from I Love Lucy (default: None)
+	    --d.x.password
+		the password (default: ********)
+	-s, --d.x.size
+		how big in tons (default: 100)
+"""
+    do_assert(r, e)
+
+def test_eval_as_converter():
+    """does eval work as a to string converter on an Option object?"""
+    n = cm.Namespace()
+    n.aaa = cm.Option('aaa', 'the a', False, short_form='a')
+    n.b = 17
+    n.c = cm.Namespace()
+    n.c.fred = cm.Option('rules', 'the doc',
+                         default="[ ('version', 'fred', 100), "
+                                 "('product', 'sally', 100)]",
+                         from_string_converter=eval)
+    n.c.wilma = cm.Option('wilma', 'wife from Flintstones')
+    c = cm.ConfigurationManager([n],
+                                manager_controls=False,
+                                use_config_files=False,
+                                auto_help=False)
+    s = sio.StringIO()
+    c.output_summary(output_stream=s)
+    r = s.getvalue()
+    s.close()
+    e =  \
+"""	-a, --aaa
+		the a
+	    --b
+		no documentation available (default: 17)
+	    --c.fred
+		the doc (default: [('version', 'fred', 100), ('product', 'sally', 100)])
+	    --c.wilma
+		wife from Flintstones (default: None)
+"""
+    do_assert(r, e)
