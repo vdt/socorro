@@ -230,3 +230,29 @@ class DatabaseConnectionPool(dict):
       except:
         util.reportExceptionAndContinue(self.logger)
 
+#===============================================================================
+# any routine that uses this module and the ConfigurationManager should have
+# these options defined:
+
+import socorro.lib.config_manager as cm
+rc = cm.Namespace()
+
+rc.databaseHost = cm.Option(name='databaseHost',
+                            doc='the hostname of the database servers',
+                            default='localhost')
+rc.databasePort = cm.Option(name='databasePort',
+                            doc='the port of the database on the host',
+                            default=5432)
+rc.databaseName =  cm.Option(name='databaseName',
+                             doc='the name of the database within the server',
+                             default='')
+rc.databaseUserName =  cm.Option(name='databaseUserName',
+                                 doc='the user name for the database servers',
+                                 default='')
+rc.databasePassword =  cm.Option(name='databasePassword',
+                                 doc='the password for the database user',
+                                 default='')
+
+#-------------------------------------------------------------------------------
+def get_required_config():
+    return rc
