@@ -1,5 +1,7 @@
 #! /usr/bin/env python
 
+import inspect as ins
+
 import logging
 import logging.handlers
 
@@ -39,8 +41,10 @@ def main(application_class=None):
                                              options_banned_from_help=[])
     config = config_manager.get_config()
 
+    application_class = config._application
+
     try:
-        app_name = config._application.app_name
+        app_name = application_class.app_name
     except AttributeError:
         app_name = 'unknown_app'
 
@@ -52,11 +56,14 @@ def main(application_class=None):
     config_manager.log_config(logger)
 
     try:
+        if ins.isclass(application_class):
+            instance = application_class(config)
+            instance.main()
+        else:
+            application_class.main(config)
         application_main = application_class.main
     except AttributeError:
         logger.critical("the application class has no main function")
-    else:
-        application_main(config)
     finally:
         logger.info("done.")
 
