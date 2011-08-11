@@ -29,13 +29,11 @@ class ConfigFileOptionNameMissingError (Exception):
 #==============================================================================
 class NotAnOptionError (Exception):
     pass
-ConfigurationManagerNotAnOption = NotAnOptionError  # for legacy compatability
 
 
 #==============================================================================
 class OptionError (Exception):
-    def __init__(self, error_string):
-        super(OptionError, self).__init__(error_string)
+    pass
 
 
 #==============================================================================
@@ -45,6 +43,16 @@ class CannotConvert (ValueError):
 
 #==============================================================================
 class Option(object):
+    #------------------------------------------------------------------------------
+    from_string_converters = {
+        bool: boolean_converter,
+        dt.datetime: datetime_converter,
+        dt.timedelta: timedelta_converter,
+        type: class_converter,
+        types.FunctionType: class_converter,
+        compiled_regexp_type: eval_to_regex_converter,
+    }
+
     #--------------------------------------------------------------------------
     def __init__(self,
                  name=None,
@@ -59,27 +67,22 @@ class Option(object):
         self.short_form = short_form
         self.default = default
         self.doc = doc
-        self.from_string_converter = from_string_converter
-        if value == None:
+        self.from_string_converter = self._deduce_converter(from_string_converter)
+        if value is None:
             value = default
         self.set_value(value, from_string_converter)
 
     #--------------------------------------------------------------------------
-    def deduce_converter(self, from_string_converter=str):
-        if from_string_converter in [str, None] and self.default != None:
-            type_of_default = type(self.default)
-            try:
-                self.from_string_converter = \
-                    from_string_converters[type_of_default]
-            except KeyError:
-                self.from_string_converter = str
-        else:
-            self.from_string_converter = from_string_converter
+    def _deduce_converter(self, converter):
+        if converter is None and self.default is not None:
+            default_type = type(self.default)
+            converter = self.from_string_converters.get(default_type,
+                                                        default_type)
+        return converter
+
 
     #--------------------------------------------------------------------------
     def set_value(self, val, from_string_converter=None):
-        if not self.from_string_converter:
-            self.deduce_converter(from_string_converter)
         type_of_val = type(val)
         if type_of_val in [str, unicode]:
             try:
@@ -1066,18 +1069,6 @@ def eval_to_regex_converter(input_str):
 
 compiled_regexp_type = type(re.compile(r'x'))
 
-#------------------------------------------------------------------------------
-from_string_converters = {int: int,
-                          float: float,
-                          str: str,
-                          unicode: unicode,
-                          bool: boolean_converter,
-                          dt.datetime: datetime_converter,
-                          dt.timedelta: timedelta_converter,
-                          type: class_converter,
-                          types.FunctionType: class_converter,
-                          compiled_regexp_type: eval_to_regex_converter,
-                          }
 
 
 #------------------------------------------------------------------------------
