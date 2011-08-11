@@ -428,6 +428,7 @@ class ConfigurationManager(object):
             self.settings_source_list = [self.ini_source,
                                          self.conf_source,
                                          self.json_source,
+                                         os.environ,
                                          command_line_options]
             self.overlay_settings(ignore_mismatches=True)
 
