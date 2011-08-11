@@ -1035,9 +1035,10 @@ def timedelta_converter(input_str):
 def boolean_converter(input_str):
     """ a conversion function for boolean
     """
-    if type(input_str) is str:
-        return input_str.lower() in ("true", "t", "1")
-    return input_str
+    try:
+        return input_str.lower() in ("true", "t", "1", "y")
+    except AttributeError:
+        return bool(input_str)
 
 
 #------------------------------------------------------------------------------
