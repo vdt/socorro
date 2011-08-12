@@ -1,10 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import sys
 import os
 import getopt
 import collections as coll
-import datetime as dt
+import datetime
 import json
 import ConfigParser as cp
 import types
@@ -13,7 +13,7 @@ import os.path
 import re
 
 import socorro.lib.util as sutil
-import socorro.lib.datetimeutil as dtu
+from socorro.lib import datetimeutil
 
 
 #==============================================================================
@@ -22,32 +22,93 @@ class ConfigFileMissingError (IOError):
 
 
 #==============================================================================
-class ConfigFileOptionNameMissingError (Exception):
+class ConfigFileOptionNameMissingError(Exception):
     pass
 
 
 #==============================================================================
-class NotAnOptionError (Exception):
+class NotAnOptionError(Exception):
     pass
 
 
 #==============================================================================
-class OptionError (Exception):
+class OptionError(Exception):
     pass
 
 
 #==============================================================================
-class CannotConvert (ValueError):
+class CannotConvertError(ValueError):
     pass
+
+#==============================================================================
+
+
+#------------------------------------------------------------------------------
+def boolean_converter(input_str):
+    """ a conversion function for boolean
+    """
+    return input_str.lower() in ("true", "t", "1", "y", "yes")
+
+
+#------------------------------------------------------------------------------
+def timedelta_converter(input_str):
+    """a conversion function for time deltas"""
+    if isinstance(input_str, basestring):
+        days, hours, minutes, seconds = 0, 0, 0, 0
+        details = input_str.split(':')
+        if len(details) >= 4:
+            days = int(details[-4])
+        if len(details) >= 3:
+            hours = int(details[-3])
+        if len(details) >= 2:
+            minutes = int(details[-2])
+        if len(details) >= 1:
+            seconds = int(details[-1])
+        return datetime.timedelta(days=days,
+                                      hours=hours,
+                                      minutes=minutes,
+                                      seconds=seconds)
+    raise ValueError(input_str)
+
+#------------------------------------------------------------------------------
+import __builtin__
+_all_named_builtins = dir(__builtin__)
+def class_converter(input_str):
+    """ a conversion that will import a module and class name
+    """
+    if not input_str:
+        return None
+    if '.' not in input_str and input_str in _all_named_builtins:
+        return eval(input_str)
+    parts = input_str.split('.')
+    try:
+        # first try as a complete module
+        package = __import__(input_str)
+    except ImportError:
+        # it must be a class from a module
+        package = __import__('.'.join(parts[:-1]), globals(), locals(), [])
+    obj = package
+    for name in parts[1:]:
+        obj = getattr(obj, name)
+    return obj
+
+#------------------------------------------------------------------------------
+def eval_to_regex_converter(input_str):
+    regex_as_str = eval(input_str)
+    return re.compile(regex_as_str)
+
+compiled_regexp_type = type(re.compile(r'x'))
 
 
 #==============================================================================
 class Option(object):
+    
     #------------------------------------------------------------------------------
     from_string_converters = {
         bool: boolean_converter,
-        dt.datetime: datetime_converter,
-        dt.timedelta: timedelta_converter,
+        datetime.datetime: datetimeutil.datetimeFromISOdateString,
+        datetime.date: datetimeutil.dateFromISOdateString,
+        datetime.timedelta: timedelta_converter,
         type: class_converter,
         types.FunctionType: class_converter,
         compiled_regexp_type: eval_to_regex_converter,
@@ -67,28 +128,32 @@ class Option(object):
         self.short_form = short_form
         self.default = default
         self.doc = doc
-        self.from_string_converter = self._deduce_converter(from_string_converter)
+        if from_string_converter is None:
+            if default is not None:
+                # take a qualified guess from the default value
+                from_string_converter = self._deduce_converter(default)
+        if isinstance(from_string_converter, basestring):
+            from_string_converter = class_converter(from_string_converter)
+        self.from_string_converter = from_string_converter
         if value is None:
             value = default
-        self.set_value(value, from_string_converter)
+        self.set_value(value)
 
     #--------------------------------------------------------------------------
-    def _deduce_converter(self, converter):
-        if converter is None and self.default is not None:
-            default_type = type(self.default)
-            converter = self.from_string_converters.get(default_type,
-                                                        default_type)
-        return converter
+    def _deduce_converter(self, default):
+        default_type = type(default)
+        return self.from_string_converters.get(default_type, default_type)
 
 
     #--------------------------------------------------------------------------
-    def set_value(self, val, from_string_converter=None):
-        type_of_val = type(val)
-        if type_of_val in [str, unicode]:
+    def set_value(self, val):
+        if isinstance(val, basestring):
             try:
                 self.value = self.from_string_converter(val)
             except TypeError:
                 self.value = val
+            except ValueError:
+                raise CannotConvertError(val)
         else:
             self.value = val
 
@@ -100,6 +165,10 @@ class Option(object):
             setattr(o, key, val)
         return o
 
+    #--------------------------------------------------------------------------
+    def to_dict(self):
+        return self.__dict__
+
 
 #==============================================================================
 class Namespace(sutil.DotDict):
@@ -110,15 +179,11 @@ class Namespace(sutil.DotDict):
 
     #--------------------------------------------------------------------------
     def __setattr__(self, name, value):
-        if type(value) in [int, float, str,
-                           unicode, dt.datetime, dt.timedelta]:
-            o = Option(name=name, default=value, value=value)
-        else:
+        if isinstance(value, (Option, Namespace)):
+            # then they know what they're doing already
             o = value
-        if type(o) not in (Option, Namespace):
-            raise NotAnOptionError('Namespace can only hold instances of '
-                                   'Option or Namespace, an attempt to assign '
-                                   'a %s has been detected' % type(value))
+        else:
+            o = Option(name=name, default=value, value=value)
         self.__setitem__(name, o)
 
     #--------------------------------------------------------------------------
@@ -160,7 +225,9 @@ class Namespace(sutil.DotDict):
 #==============================================================================
 class OptionsByGetopt(object):
     #--------------------------------------------------------------------------
-    def __init__(self, argv_source=sys.argv):
+    def __init__(self, argv_source=None):
+        if argv_source is None:
+            argv_source = sys.argv
         self.argv_source = argv_source
 
     #--------------------------------------------------------------------------
@@ -383,15 +450,22 @@ class ConfigurationManager(object):
 
     #--------------------------------------------------------------------------
     def __init__(self,
-                 definition_source_list=[],
-                 settings_source_list=[],
-                 argv_source=sys.argv[1:],
+                 definition_source_list=None,
+                 settings_source_list=None,
+                 argv_source=None,
                  use_config_files=True,
                  auto_help=True,
                  manager_controls=True,
                  quit_after_admin=True,
                  options_banned_from_help=['_application'],
                  ):
+        # instead of allowing mutables as default keyword argument values...
+        if definition_source_list is None:
+            definition_source_list = []
+        if settings_source_list is None:
+            settings_source_list = []
+        if argv_source is None:
+            argv_source = sys.argv[1:]
 
         self.option_definitions = Namespace()
         self.definition_source_list = definition_source_list
@@ -400,7 +474,7 @@ class ConfigurationManager(object):
             self.settings_source_list = settings_source_list
         else:
             self.custom_settings_source = False
-            command_line_options = OptionsByGetopt()
+            command_line_options = OptionsByGetopt(argv_source=argv_source)
             self.settings_source_list = [os.environ,
                                          command_line_options,
                                         ]
@@ -551,7 +625,7 @@ class ConfigurationManager(object):
 
     #--------------------------------------------------------------------------
     def setup_definitions_for_mappings(self, source, destination):
-        try:
+        if 1:#try:
             for key, val in source.items():
                 if key.startswith('__'):
                     continue  # ignore these
@@ -565,15 +639,13 @@ class ConfigurationManager(object):
                     if 'name' in val and 'default' in val:
                         # this is an option, not a namespace
                         destination[key] = d = Option(**val)
-                        if isinstance(d.from_string_converter, str):
-                            d.from_string_converter = \
-                             class_converter(d.from_string_converter)
                     else:
                         # this is a namespace
                         try:
                             destination[key] = d = Namespace(doc=val._doc)
                         except AttributeError:
                             destination[key] = d = Namespace()
+                        # recurse!
                         self.setup_definitions_for_mappings(val, d)
                 elif val_type in [int, float, str, unicode]:
                     destination[key] = Option(name=key,
@@ -581,7 +653,7 @@ class ConfigurationManager(object):
                                               default=val)
                 else:
                     pass
-        except AttributeError:
+        else:#except AttributeError:
             pass
 
     #--------------------------------------------------------------------------
@@ -853,8 +925,6 @@ class ConfigurationManager(object):
                 s = str(an_option.value)
             else:
                 s = an_option.value
-        if an_option.from_string_converter in converters_requiring_quotes:
-            s = "'''%s'''" % s
         return s
 
     #--------------------------------------------------------------------------
@@ -969,110 +1039,6 @@ class ConfigurationManager(object):
 
 
 #------------------------------------------------------------------------------
-def io_converter(input_str):
-    """ a conversion function for to select stdout, stderr or open a file for
-    writing"""
-    if type(input_str) is str:
-        input_str_lower = input_str.lower()
-        if input_str_lower == 'stdout':
-            return sys.stdout
-        if input_str_lower == 'stderr':
-            return sys.stderr
-        return open(input_str, "w")
-    return input_str
-
-
-#------------------------------------------------------------------------------
-def datetime_converter(input_str):
-    """ a conversion function for datetimes
-    """
-    try:
-        if type(input_str) is str:
-            year = int(input_str[:4])
-            month = int(input_str[5:7])
-            day = int(input_str[8:10])
-            hour = 0
-            minute = 0
-            second = 0
-            try:
-                hour = int(input_str[11:13])
-                minute = int(input_str[14:16])
-                second = int(input_str[17:19])
-            except ValueError:
-                pass
-            return dt.datetime(year, month, day, hour, minute, second)
-        return input_str
-    except Exception:
-        return dt.datetime.now()
-
-
-#------------------------------------------------------------------------------
-def timedelta_converter(input_str):
-    """ a conversion function for time deltas
-    """
-    try:
-        if type(input_str) is str:
-            days, hours, minutes, seconds = 0, 0, 0, 0
-            details = input_str.split(':')
-            if len(details) >= 4:
-                days = int(details[-4])
-            if len(details) >= 3:
-                hours = int(details[-3])
-            if len(details) >= 2:
-                minutes = int(details[-2])
-            if len(details) >= 1:
-                seconds = int(details[-1])
-            return dt.timedelta(days=days,
-                                hours=hours,
-                                minutes=minutes,
-                                seconds=seconds)
-    except ValueError:
-        pass
-    return input_str
-
-
-#------------------------------------------------------------------------------
-def boolean_converter(input_str):
-    """ a conversion function for boolean
-    """
-    try:
-        return input_str.lower() in ("true", "t", "1", "y")
-    except AttributeError:
-        return bool(input_str)
-
-
-#------------------------------------------------------------------------------
-def class_converter(input_str):
-    """ a conversion that will import a module and class name
-    """
-    if not input_str:
-        return None
-    parts = input_str.split('.')
-    try:
-        # first try as a complete module
-        package = __import__(input_str)
-    except ImportError:
-        if len(parts) == 1:
-            # maybe this is a builtin
-            return eval(input_str)
-        # it must be a class from a module
-        package = __import__('.'.join(parts[:-1]), globals(), locals(), [])
-    obj = package
-    for name in parts[1:]:
-        obj = getattr(obj, name)
-    return obj
-
-
-#------------------------------------------------------------------------------
-def eval_to_regex_converter(input_str):
-    regex_as_str = eval(input_str)
-    return re.compile(regex_as_str)
-
-compiled_regexp_type = type(re.compile(r'x'))
-
-
-
-#------------------------------------------------------------------------------
 def classes_and_functions_to_str(a_thing):
     if a_thing is None:
         return ''
@@ -1089,16 +1055,13 @@ to_string_converters = {int: str,
                         str: str,
                         unicode: unicode,
                         bool: lambda x: 'True' if x else 'False',
-                        dt.datetime: dtu.datetimeToISOdateString,
-                        dt.timedelta: dtu.timedeltaToStr,
+                        datetime.datetime: datetimeutil.datetimeToISOdateString,
+                        datetime.timedelta: datetimeutil.timedeltaToStr,
                         type: classes_and_functions_to_str,
                         types.FunctionType: classes_and_functions_to_str,
                         compiled_regexp_type: lambda x: x.pattern,
                         }
 
-
-#------------------------------------------------------------------------------
-converters_requiring_quotes = [eval, eval_to_regex_converter]
 
 
 #------------------------------------------------------------------------------
@@ -1116,3 +1079,4 @@ def new_configuration(configurationModule=None,
 #==============================================================================
 if __name__ == "__main__":
     pass
+
