@@ -93,16 +93,15 @@ def class_converter(input_str):
     return obj
 
 #------------------------------------------------------------------------------
-def eval_to_regex_converter(input_str):
-    regex_as_str = eval(input_str)
-    return re.compile(regex_as_str)
+def regex_converter(input_str):
+    return re.compile(input_str)
 
 compiled_regexp_type = type(re.compile(r'x'))
 
 
 #==============================================================================
 class Option(object):
-    
+
     #------------------------------------------------------------------------------
     from_string_converters = {
         bool: boolean_converter,
@@ -111,7 +110,7 @@ class Option(object):
         datetime.timedelta: timedelta_converter,
         type: class_converter,
         types.FunctionType: class_converter,
-        compiled_regexp_type: eval_to_regex_converter,
+        compiled_regexp_type: regex_converter,
     }
 
     #--------------------------------------------------------------------------
