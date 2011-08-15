@@ -6,7 +6,7 @@ import getopt
 import collections as coll
 import datetime
 import json
-import ConfigParser as cp
+import ConfigParser
 import types
 import inspect
 import os.path
@@ -205,6 +205,7 @@ class Namespace(sutil.DotDict):
 
     #--------------------------------------------------------------------------
     def set_value(self, name, value, strict=True):
+        
         name_parts = name.split('.', 1)
         prefix = name_parts[0]
         try:
@@ -361,32 +362,24 @@ class OptionsByGetopt(object):
 #==============================================================================
 class OptionsByConfFile(object):
     #--------------------------------------------------------------------------
-    def __init__(self, filename, open=open):
-        self.filename = filename
+    def __init__(self, filename, opener=open):
         self.values = {}
-        try:
-            with open(self.filename) as f:
-                previous_key = None
-                for l in f:
-                    if l[0] in ' \t' and previous_key:
-                        l = l[1:]
-                        self.values[previous_key] = '%s%s' % \
-                                            (self.values[previous_key], l)
-                        continue
-                    l = l.strip()
-                    if not l:
-                        continue
-                    if l[0] in '#':
-                        continue
-                    try:
-                        parts = l.split("=", 1)
-                        key, value = parts
-                        self.values[key.strip()] = value.strip()
-                        previous_key = key
-                    except ValueError:
-                        self.values[parts[0]] = ''
-        except IOError:
-            pass
+        with opener(filename) as f:
+            previous_key = None
+            for line in f:
+                if line.strip().startswith('#') or not line.strip():
+                    continue
+                if line[0] in ' \t' and previous_key:
+                    line = line[1:]
+                    self.values[previous_key] = '%s%s' % \
+                                        (self.values[previous_key], line.rstrip())
+                    continue
+                try:
+                    key, value = line.split("=", 1)
+                    self.values[key.strip()] = value.strip()
+                    previous_key = key
+                except ValueError:
+                    self.values[line] = ''
 
     #--------------------------------------------------------------------------
     def get_values(self, config_manager, ignore_mismatches):
@@ -398,8 +391,8 @@ class OptionsByIniFile(object):
     #--------------------------------------------------------------------------
     def __init__(self, source,
                  top_level_section_name='top_level'):
-        if isinstance(source, str):
-            parser = cp.RawConfigParser()
+        if isinstance(source, basestring):
+            parser = ConfigParser.RawConfigParser()
             parser.optionxform = str
             parser.read(source)
             self.configparser = parser
@@ -419,8 +412,11 @@ class OptionsByIniFile(object):
             for an_option in self.configparser.options(a_section):
                 name = '%s%s' % (prefix, an_option)
                 options[name] = self.configparser.get(a_section, an_option)
+                
+                # XXX (peterbe): why these two lines? How can they ever happen?
                 if options[name] == None:
                     options[name] = True
+                    
         return options
 
 
@@ -456,7 +452,7 @@ class ConfigurationManager(object):
                  auto_help=True,
                  manager_controls=True,
                  quit_after_admin=True,
-                 options_banned_from_help=['_application'],
+                 options_banned_from_help=None,
                  ):
         # instead of allowing mutables as default keyword argument values...
         if definition_source_list is None:
@@ -465,6 +461,8 @@ class ConfigurationManager(object):
             settings_source_list = []
         if argv_source is None:
             argv_source = sys.argv[1:]
+        if options_banned_from_help is None:
+            options_banned_from_help = ['_application']
 
         self.option_definitions = Namespace()
         self.definition_source_list = definition_source_list
@@ -477,7 +475,6 @@ class ConfigurationManager(object):
             self.settings_source_list = [os.environ,
                                          command_line_options,
                                         ]
-        self.use_config_files = use_config_files
         self.auto_help = auto_help
         self.help = False
         self.admin_tasks_done = False
@@ -498,7 +495,7 @@ class ConfigurationManager(object):
         self.overlay_settings(ignore_mismatches=True)
 
         # read config files
-        if self.use_config_files and not self.custom_settings_source:
+        if use_config_files and not self.custom_settings_source:
             self.read_config_files()
             # second pass to include config file values - ignore bad options
             self.settings_source_list = [self.ini_source,
@@ -528,7 +525,7 @@ class ConfigurationManager(object):
 
     #--------------------------------------------------------------------------
     def read_config_files(self):
-    # try ini file
+	# try ini file
         app = self.get_option_by_name('_application')
         try:
             application_name = app.value.app_name
